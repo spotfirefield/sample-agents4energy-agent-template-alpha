@@ -24,8 +24,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Garden Coach",
-  description: "Good gardening advice",
+  title: "Digital Assistant",
+  description: "A digital assistant for your needs",
 };
 
 
