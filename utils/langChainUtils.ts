@@ -125,8 +125,6 @@ export const getLangChainChatMessagesStartingWithHumanMessage = async (chatSessi
           sortDirection: APITypes.ModelSortDirection.ASC,
       }
     })
-
-    console.log('chatSessionMessages: ', chatSessionMessages)
   
     const firstHumanMessageIndex = chatSessionMessages.findIndex((message) => message.role === 'human');
     const messagesStartingWithFirstHumanMessage = firstHumanMessageIndex === -1
@@ -135,7 +133,7 @@ export const getLangChainChatMessagesStartingWithHumanMessage = async (chatSessi
   
     const langChainMessagesStartingWithFirstHumanMessage =  messagesStartingWithFirstHumanMessage.map(message => convertAmplifyChatMessageToLangChainMessage(message))
   
-    console.log('langChainMessagesStartingWithFirstHumanMessage: ', langChainMessagesStartingWithFirstHumanMessage)
+    // console.log('langChainMessagesStartingWithFirstHumanMessage: ', langChainMessagesStartingWithFirstHumanMessage)
   
     return langChainMessagesStartingWithFirstHumanMessage
   }

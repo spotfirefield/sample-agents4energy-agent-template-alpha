@@ -23,6 +23,8 @@ import remarkGfm from 'remark-gfm'
 
 const amplifyClient = generateClient<Schema>();
 
+
+
 const ChatMessage = (params: {
     message: Message,
     // setChatSession: (newGarden: Schema["ChatSession"]["createType"]) => void,
@@ -32,6 +34,22 @@ const ChatMessage = (params: {
 
     const theme = useTheme();
 
+    const humanMessageStyle = {
+        backgroundColor: theme.palette.primary.light,
+        color: theme.palette.primary.contrastText,
+        padding: theme.spacing(1),
+        borderRadius: theme.shape.borderRadius,
+        textAlign: 'right' as const,
+        marginLeft: 'auto',
+        maxWidth: '80%',
+    };
+    const aiMessageStyle = {
+        backgroundColor: theme.palette.grey[200],
+        padding: theme.spacing(1),
+        borderRadius: theme.shape.borderRadius,
+    };
+    
+
     let messageStyle = {};
 
     // let proposedGarden: z.infer<typeof createGardenType>
@@ -40,11 +58,7 @@ const ChatMessage = (params: {
 
     switch (params.message.role) {
         case 'ai':
-            messageStyle = {
-                backgroundColor: theme.palette.grey[200],
-                padding: theme.spacing(1),
-                borderRadius: theme.shape.borderRadius,
-            };
+            messageStyle = aiMessageStyle;
             if (params.message.toolCalls && params.message.toolCalls !== '[]') {
                 // console.log('Parsing tool calls: ', params.message.toolCalls)
                 const toolCalls = JSON.parse(params.message.toolCalls) as { name: string, args: unknown }[]
@@ -62,16 +76,24 @@ const ChatMessage = (params: {
                     }
                 }
             }
+            break;
         case 'tool':
-            
+            return <p>Tool message</p>
             break;
         case 'human':
-            messageStyle = {
-                backgroundColor: theme.palette.primary.light,
-                color: theme.palette.primary.contrastText,
-                padding: theme.spacing(1),
-                borderRadius: theme.shape.borderRadius,
-            };
+            return (
+                <div style={humanMessageStyle}>
+                    <ReactMarkdown
+                        remarkPlugins={[remarkGfm]}
+                    >
+                        {params.message.content?.text}
+                    </ReactMarkdown>
+        
+                    {/* <pre>
+                        {JSON.stringify(params.message, null, 2)}
+                    </pre> */}
+                </div>
+            ) 
             break;
     }
 

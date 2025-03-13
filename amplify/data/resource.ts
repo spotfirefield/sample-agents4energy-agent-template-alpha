@@ -54,9 +54,6 @@ export const schema = a.schema({
       toolCallId: a.string(),
       toolName: a.string(),
       toolCalls: a.string(),
-
-      //context fields
-      contextStepId: a.string(),
     })
     .secondaryIndexes((index) => [
       index("chatSessionId").sortKeys(["createdAt"])

@@ -95,7 +95,7 @@ function Page({
                 <Box sx={{ 
                     display: 'flex',
                     flexDirection: 'column',
-                    overflow: 'auto',
+                    overflow: 'hidden',
                     p: 3,
                     backgroundColor: '#f8f9fa',
                     flex: 1

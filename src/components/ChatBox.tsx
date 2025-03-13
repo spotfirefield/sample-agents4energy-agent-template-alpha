@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Box, TextField, Button, List, ListItem, Typography } from '@mui/material';
+import { Box, TextField, Button, List, ListItem, Typography, CircularProgress } from '@mui/material';
 
 
 import { combineAndSortMessages, sendMessage } from '../../utils/amplifyUtils';
@@ -176,7 +176,21 @@ const ChatBox = (params: {
           ))}
         </List>
       </Box>
-      {isLoading && <Box sx={{ textAlign: 'center', margin: '8px 0' }}>Loading...</Box>}
+      {isLoading && (
+        <Box sx={{ 
+          display: 'flex', 
+          justifyContent: 'center', 
+          alignItems: 'center', 
+          margin: '16px 0',
+          flexDirection: 'column',
+          gap: 1
+        }}>
+          <CircularProgress size={40} color="primary" thickness={4} />
+          <Typography variant="body2" color="text.secondary">
+            Thinking...
+          </Typography>
+        </Box>
+      )}
       {messages.length === 0 &&
         <Box sx={{ textAlign: 'center', margin: '8px 0' }}>
           <Typography variant="body2">Tell me about your dream garden</Typography>
