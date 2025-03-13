@@ -110,11 +110,11 @@ Today's date is ${new Date().toLocaleDateString()}.
         }
 
     } catch (error) {
-        console.error("Error generating garden / steps:", JSON.stringify(error, null, 2));
+        console.error("Error responding to user:", JSON.stringify(error, null, 2));
         if (error instanceof Error) {
-            throw new Error(`Failed to generate garden / steps.\n${error.message}`);
+            throw new Error(`Error responding to user:\n${error.message}`);
         } else {
-            throw new Error("Failed to generate garden / steps.\nUnknown error");
+            throw new Error("Error responding to user: \nUnknown error");
         }
     }
 }

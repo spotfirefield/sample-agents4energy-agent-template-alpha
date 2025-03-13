@@ -45,8 +45,20 @@ export default function RootLayout({
           <Providers>
             <ThemeProvider theme={theme}>
               <CssBaseline />
-              <TopNavBar />
-              {children}
+              <div style={{ 
+                display: 'flex', 
+                flexDirection: 'column', 
+                height: '100vh', 
+                overflow: 'hidden' 
+              }}>
+                <TopNavBar />
+                <div style={{ 
+                  flexGrow: 1, 
+                  overflow: 'auto' 
+                }}>
+                  {children}
+                </div>
+              </div>
             </ThemeProvider>
           </Providers>
         </AppRouterCacheProvider>

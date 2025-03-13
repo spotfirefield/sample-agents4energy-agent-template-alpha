@@ -53,3 +53,45 @@ export const publishResponseStreamChunk = /* GraphQL */ `mutation PublishRespons
   APITypes.PublishResponseStreamChunkMutationVariables,
   APITypes.PublishResponseStreamChunkMutation
 >;
+
+export const listChatMessageByChatSessionIdAndCreatedAt = /* GraphQL */ `query ListChatMessageByChatSessionIdAndCreatedAt(
+  $chatSessionId: ID!
+  $createdAt: ModelStringKeyConditionInput
+  $filter: ModelChatMessageFilterInput
+  $limit: Int
+  $nextToken: String
+  $sortDirection: ModelSortDirection
+) {
+  listChatMessageByChatSessionIdAndCreatedAt(
+    chatSessionId: $chatSessionId
+    createdAt: $createdAt
+    filter: $filter
+    limit: $limit
+    nextToken: $nextToken
+    sortDirection: $sortDirection
+  ) {
+    items {
+      chatSessionId
+      contextStepId
+      content {
+        text
+      }
+      createdAt
+      id
+      owner
+      responseComplete
+      role
+      toolCallId
+      toolCalls
+      toolName
+      updatedAt
+      __typename
+    }
+    nextToken
+    __typename
+  }
+}
+` as GeneratedQuery<
+  APITypes.ListChatMessageByChatSessionIdAndCreatedAtQueryVariables,
+  APITypes.ListChatMessageByChatSessionIdAndCreatedAtQuery
+>;

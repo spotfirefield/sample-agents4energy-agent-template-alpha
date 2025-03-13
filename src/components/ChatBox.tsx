@@ -149,18 +149,17 @@ const ChatBox = (params: {
   return (
     <Box sx={{
       width: '100%',
-      height: '90%',
-      maxHeight: '90%',
-      padding: '8px',
+      height: '100%',
       display: 'flex',
       flexDirection: 'column',
       overflowY: 'hidden'
     }}>
       <Box sx={{
-        flexGrow: 1,
+        flex: 1,
         overflowY: 'auto',
         flexDirection: 'column-reverse',
         display: 'flex',
+        mb: 2
       }}>
         <List>
           {[
@@ -194,23 +193,25 @@ const ChatBox = (params: {
           </List>
         </Box>
       }
-      <TextField
-        fullWidth
-        multiline
-        variant="outlined"
-        placeholder="Type a message..."
-        value={userInput}
-        onChange={(e) => setUserInput(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' && !e.shiftKey) {
-            handleSend(userInput);
-          }
-        }}
-        disabled={isLoading}
-      />
-      <Button variant="contained" color="primary" onClick={() => handleSend(userInput)} sx={{ marginTop: '8px' }}>
-        Send
-      </Button>
+      <Box sx={{ mt: 'auto' }}>
+        <TextField
+          fullWidth
+          multiline
+          variant="outlined"
+          placeholder="Type a message..."
+          value={userInput}
+          onChange={(e) => setUserInput(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+              handleSend(userInput);
+            }
+          }}
+          disabled={isLoading}
+        />
+        <Button variant="contained" color="primary" onClick={() => handleSend(userInput)} sx={{ marginTop: '8px', width: '100%' }}>
+          Send
+        </Button>
+      </Box>
     </Box>
   );
 };

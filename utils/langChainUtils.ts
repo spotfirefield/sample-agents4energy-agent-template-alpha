@@ -4,7 +4,7 @@ import { HumanMessage, AIMessage, AIMessageChunk, ToolMessage, BaseMessage, Mess
 import { Message } from './types';
 
 import * as APITypes from "../amplify/functions/graphql/API";
-import { listChatMessageByChatSessionIdAndCreatedAt } from "../amplify/functions/graphql/queries";
+import { listChatMessageByChatSessionIdAndCreatedAt } from "./graphqlStatements";
 import { PublishMessageCommandInput } from "./types";
 
 import { getConfiguredAmplifyClient } from "./amplifyUtils";
@@ -125,6 +125,8 @@ export const getLangChainChatMessagesStartingWithHumanMessage = async (chatSessi
           sortDirection: APITypes.ModelSortDirection.ASC,
       }
     })
+
+    console.log('chatSessionMessages: ', chatSessionMessages)
   
     const firstHumanMessageIndex = chatSessionMessages.findIndex((message) => message.role === 'human');
     const messagesStartingWithFirstHumanMessage = firstHumanMessageIndex === -1
