@@ -1,14 +1,12 @@
 "use client"
-import React, { act, useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 
 import { generateClient } from "aws-amplify/data";
 import { type Schema } from "@/../amplify/data/resource";
-import { Box, Button, Card, CardActions, CardContent, Grid2 as Grid, Typography } from '@mui/material';
+import { Box, Typography } from '@mui/material';
 
-import { sendMessage } from '@/../utils/amplifyUtils';
-import EditableTextBox from '@/components/EditableTextBox';
-import ChatBoxDrawer from '@/components/ChatBoxDrawer';
 import ChatBox from "@/components/ChatBox"
+import EditableTextBox from '@/components/EditableTextBox';
 
 const amplifyClient = generateClient<Schema>();
 
@@ -19,7 +17,17 @@ function Page({
 }) {
     const [activeChatSession, setActiveChatSession] = useState<Schema["ChatSession"]["createType"]>();
 
-    //Query the garden
+    const setActiveChatSessionAndUpload = async (newChatSession: Schema["ChatSession"]["createType"]) => {
+        
+        const {data: updatedChatSession} = await amplifyClient.models.ChatSession.update({
+            id: (await params).chatSessionId,
+            ...newChatSession
+        });
+
+        if (updatedChatSession) setActiveChatSession(updatedChatSession);
+    }
+
+    //Get the chat session info
     useEffect(() => {
         const fetchChatSession = async () => {
             const chatSessionId = (await params).chatSessionId
@@ -39,10 +47,27 @@ function Page({
     }
 
     return (
-        <ChatBox
-            chatSessionId={activeChatSession.id}
-            // initialFullScreenStatus={true}//{activeGarden && plannedSteps.length === 0}
-        />
+        <>
+            <EditableTextBox
+                object={activeChatSession}
+                fieldPath="name"
+                onUpdate={setActiveChatSessionAndUpload}
+                typographyVariant="h3"
+            />
+            <Box sx={{ 
+                height: 'calc(100vh - 150px)', 
+                maxHeight: 'calc(100vh - 150px)',
+                display: 'flex',
+                flexDirection: 'column',
+                overflow: 'auto'
+            }}>
+            <ChatBox
+                chatSessionId={activeChatSession.id}
+            />
+            </Box>
+            
+        </>
+
     );
 }
 

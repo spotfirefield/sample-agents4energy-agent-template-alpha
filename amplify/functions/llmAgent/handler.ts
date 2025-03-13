@@ -1,26 +1,19 @@
 import { stringify } from "yaml";
 
 import { getConfiguredAmplifyClient } from '../../../utils/amplifyUtils';
-// import { getWeatherForecast, geocode } from '../../../utils/weather';
 
 import { ChatBedrockConverse } from "@langchain/aws";
 import { HumanMessage, AIMessage, ToolMessage, BaseMessage, MessageContentText, SystemMessage, AIMessageChunk } from "@langchain/core/messages";
 import { createReactAgent } from "@langchain/langgraph/prebuilt";
 import { Calculator } from "@langchain/community/tools/calculator";
 
-// import { listPlannedSteps } from '../../../utils/graphqlStatements'
-// import { createGarden, updateGarden } from '../graphql/mutations';
-// import { getGarden, getPlannedStep } from '../graphql/queries';
 import { publishResponseStreamChunk } from "../graphql/mutations";
-// import { CreateGardenInput, UpdateGardenInput } from "../graphql/API";
+
 
 import { Schema } from '../../data/resource';
 
-// import { generateGarden } from '../../../utils/amplifyStrucutedOutputs';
-import { getLangChainMessageTextContent, publishMessage, stringifyLimitStringLength } from '../../../utils/langChainUtils';
-// import { createGardenInfoToolBuilder, createGardenPlanToolBuilder } from "./toolBox";
+import { getLangChainChatMessagesStartingWithHumanMessage, getLangChainMessageTextContent, publishMessage, stringifyLimitStringLength } from '../../../utils/langChainUtils';
 
-// import { plantSpacing } from '../../../src/constants/plantSpacing'
 
 export const handler: Schema["invokeAgent"]["functionHandler"] = async (event, context) => {
     console.log('event:\n', JSON.stringify(event, null, 2))
@@ -31,6 +24,8 @@ export const handler: Schema["invokeAgent"]["functionHandler"] = async (event, c
         if (!('sub' in event.identity)) throw new Error("Event does not contain user");
 
         const amplifyClient = getConfiguredAmplifyClient();
+
+        const chatSessionMessages = await getLangChainChatMessagesStartingWithHumanMessage(event.arguments.chatSessionId)
 
         const agentModel = new ChatBedrockConverse({
             model: process.env.MODEL_ID,
@@ -49,20 +44,27 @@ export const handler: Schema["invokeAgent"]["functionHandler"] = async (event, c
         });
 
         let systemMessageContent = `
-You are a helpful llm agent.
+You are a helpful llm agent showing a demo workflow. If you don't have the information you need, make a reasonable guess.
 Response chat message text content should be in markdown format.
 Today's date is ${new Date().toLocaleDateString()}.
         `//.replace(/^\s+/gm, '') //This trims the whitespace from the beginning of each line
+        
+        // If the chatSessionMessages ends with a human message, remove it.
+        if (chatSessionMessages.length > 0 && 
+            chatSessionMessages[chatSessionMessages.length - 1] instanceof HumanMessage) {
+            chatSessionMessages.pop();
+        }
 
         const input = {
             messages: [
                 new SystemMessage({
                     content: systemMessageContent
                 }),
+                ...chatSessionMessages,
                 new HumanMessage({
                     content: event.arguments.userInput
                 })
-            ]
+            ].filter((message): message is BaseMessage => message !== undefined)
         }
 
         console.log('input:\n', stringify(input))

@@ -1,12 +1,16 @@
 
 import { stringify } from 'yaml';
 import { HumanMessage, AIMessage, AIMessageChunk, ToolMessage, BaseMessage, MessageContentText } from "@langchain/core/messages";
+import { Message } from './types';
 
 import * as APITypes from "../amplify/functions/graphql/API";
+import { listChatMessageByChatSessionIdAndCreatedAt } from "../amplify/functions/graphql/queries";
 import { PublishMessageCommandInput } from "./types";
 
 import { getConfiguredAmplifyClient } from "./amplifyUtils";
 import { createChatMessage } from "./graphqlStatements";
+
+
 
 const amplifyClient = getConfiguredAmplifyClient();
 
@@ -66,17 +70,6 @@ export const publishMessage = async (props: PublishMessageCommandInput) => {
                     toolCalls?.length === 0
                 )
             }
-
-            // //If the AI message has no tool calls, set responseComplete to true
-            // if (
-            //     !toolCalls || 
-            //     toolCalls?.length === 0
-            // ) {
-            //     input = { 
-            //         ...input, 
-            //         responseComplete: true
-            //      }
-            // }
             break;
         case "tool":
             input = { 
@@ -86,21 +79,6 @@ export const publishMessage = async (props: PublishMessageCommandInput) => {
                 toolName: (props.message as ToolMessage).name || 'no tool name supplied' }
             break;
     }
-
-    // if (props.message.getType() === "ai") {
-    //     input = { 
-    //         ...input, 
-    //         role: APITypes.ChatMessageRole.ai, 
-    //         toolCalls: JSON.stringify((props.message as AIMessageChunk).tool_calls)
-    //     }
-    // } else if (props.message instanceof ToolMessage) {
-    //     input = {
-    //         ...input,
-    //         role: APITypes.ChatMessageRole.tool,
-    //         toolCallId: props.message.tool_call_id,
-    //         toolName: props.message.name || 'no tool name supplied'
-    //     }
-    // }
 
     console.log('Publishing mesage with input: ', input)
 
@@ -117,30 +95,45 @@ export const publishMessage = async (props: PublishMessageCommandInput) => {
     console.log('Publish message response: \n', stringifyLimitStringLength(publishMessageResponse))
 }
 
+export const convertAmplifyChatMessageToLangChainMessage = (message: Message) => {
+    switch (message.role) {
+        case 'human':
+            return new HumanMessage({
+                content: message.content?.text || "",
+            })
+        case 'ai':
+            return new AIMessage({
+                content: message.content?.text || "",
+                tool_calls: JSON.parse(message.toolCalls || '[]')
+            })
+        case 'tool':
+            return new ToolMessage({
+                content: message.content?.text || "",
+                tool_call_id: message.toolCallId || "",
+                name: message.toolName || "no tool name supplied"
+            })
+    }
+}
 
-// const messages: BaseMessage[] = sortedMessagesStartingWithHumanMessage.map((message) => {
-//     if (message.role === 'human') {
-//         return new HumanMessage({
-//             id: message.id,
-//             content: message.content,
-//         })
-//     } else if (message.role === 'ai') {
-//         // if (!message.contentBlocks) throw new Error(`No contentBlocks in message: ${message}`);
-//         return new AIMessage({
-//             content: [{
-//                 type: 'text',
-//                 text: message.content
-//             }],
-//             // content: JSON.parse(message.contentBlocks),
-//             tool_calls: JSON.parse(message.tool_calls || '[]')
-//         })
-//     } else {
-//         // if (!message.contentBlocks) throw new Error(`No contentBlocks in message: ${message}`);
-//         return new ToolMessage({
-//             content: message.content,
-//             // content: JSON.parse(message.contentBlocks),
-//             tool_call_id: message.tool_call_id || "",
-//             name: message.tool_name || ""
-//         })
-//     }
-// })
+export const getLangChainChatMessagesStartingWithHumanMessage = async (chatSessionId: string) => {
+    const amplifyClient = getConfiguredAmplifyClient()
+    const {data: {listChatMessageByChatSessionIdAndCreatedAt: {items: chatSessionMessages}}} = await amplifyClient.graphql({ //listChatMessageByChatSessionIdAndCreatedAt
+      query: listChatMessageByChatSessionIdAndCreatedAt,
+      variables: {
+          limit: 20,
+          chatSessionId: chatSessionId,
+          sortDirection: APITypes.ModelSortDirection.ASC,
+      }
+    })
+  
+    const firstHumanMessageIndex = chatSessionMessages.findIndex((message) => message.role === 'human');
+    const messagesStartingWithFirstHumanMessage = firstHumanMessageIndex === -1
+              ? []
+              : chatSessionMessages.slice(firstHumanMessageIndex);
+  
+    const langChainMessagesStartingWithFirstHumanMessage =  messagesStartingWithFirstHumanMessage.map(message => convertAmplifyChatMessageToLangChainMessage(message))
+  
+    console.log('langChainMessagesStartingWithFirstHumanMessage: ', langChainMessagesStartingWithFirstHumanMessage)
+  
+    return langChainMessagesStartingWithFirstHumanMessage
+  }

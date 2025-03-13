@@ -3,8 +3,6 @@ import { generateClient } from "aws-amplify/data";
 import { Schema } from "../amplify/data/resource";
 import { Message } from "./types";
 
-// import { generateClient } from "aws-amplify/data";
-// import { type Schema } from "@/../amplify/data/resource";
 const amplifyClient = generateClient<Schema>();
 
 export const getConfiguredAmplifyClient = () => {
@@ -72,3 +70,5 @@ export const sendMessage = async (props: {
     invokeResponse
   }
 }
+
+

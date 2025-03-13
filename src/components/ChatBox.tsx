@@ -45,6 +45,7 @@ const ChatBox = (params: {
             // else {
             //   setIsLoading(true)
             // }
+            console.log('sortedMessages: ', sortedMessages)
             return sortedMessages
           })
           setStreamChunkMessage(undefined)
