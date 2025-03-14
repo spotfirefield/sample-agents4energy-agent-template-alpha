@@ -14,7 +14,7 @@ import { Message } from '@/../utils/types';
 // import { MuiMarkdown } from 'mui-markdown';
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import { Typography } from '@mui/material';
+import { Button, Typography } from '@mui/material';
 
 // const amplifyClient = generateClient<Schema>();
 
@@ -53,25 +53,7 @@ const ChatMessage = (params: {
 
     switch (params.message.role) {
         case 'ai':
-            messageStyle = aiMessageStyle;
-            if (params.message.toolCalls && params.message.toolCalls !== '[]') {
-                // console.log('Parsing tool calls: ', params.message.toolCalls)
-                const toolCalls = JSON.parse(params.message.toolCalls) as { name: string, args: unknown }[]
-                // console.log('toolCalls: ', toolCalls)
-                for (const toolCall of toolCalls) {
-                    // toolCalls.forEach((toolCall) => {
-                    switch (toolCall.name) {
-                        case 'createGardenPlannedSteps':
-                            // Dummy case
-                            break
-                        case 'recommendGardenUpdate':
-                            // Dummy case
-
-                            break
-                    }
-                }
-            }
-            return <div style={messageStyle}>
+            return <div style={aiMessageStyle}>
                 <ReactMarkdown
                     remarkPlugins={[remarkGfm]}
                 >
@@ -99,8 +81,8 @@ const ChatMessage = (params: {
                                     <BuildIcon fontSize="small" style={{ marginRight: theme.spacing(0.5) }} />
                                     {toolCall.name}
                                 </Typography>
-                                <div style={{ 
-                                    backgroundColor: theme.palette.grey[50], 
+                                <div style={{
+                                    backgroundColor: theme.palette.grey[50],
                                     padding: theme.spacing(1),
                                     borderRadius: theme.shape.borderRadius,
                                     fontFamily: 'monospace',
@@ -154,6 +136,68 @@ const ChatMessage = (params: {
                         </div>
                     )
                     break
+                case 'userInputTool':
+                    try {
+                        const toolData = JSON.parse(params.message.content?.text || '{}');
+                        return (
+                            <div style={{
+                                backgroundColor: theme.palette.background.paper,
+                                padding: theme.spacing(2),
+                                borderRadius: theme.shape.borderRadius,
+                                boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+                                maxWidth: '90%',
+                                margin: theme.spacing(1, 0)
+                            }}>
+                                <Typography variant="h6" gutterBottom sx={{ 
+                                    color: theme.palette.primary.main,
+                                    fontWeight: 'bold'
+                                }}>
+                                    {toolData.title || 'User Action Required'}
+                                </Typography>
+                                
+                                <Typography variant="body2" sx={{ 
+                                    marginBottom: theme.spacing(2),
+                                    color: theme.palette.text.secondary
+                                }}>
+                                    {toolData.description || 'Please take action by clicking the button below.'}
+                                </Typography>
+                                
+                                <Button
+                                    variant="contained"
+                                    color="primary"
+                                    sx={{
+                                        fontWeight: 'medium',
+                                        textTransform: 'none',
+                                        boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+                                        '&:hover': {
+                                            boxShadow: '0 4px 8px rgba(0,0,0,0.3)',
+                                        }
+                                    }}
+                                    onClick={(e) => {
+                                        const button = e.currentTarget;
+                                        button.disabled = true;
+                                        button.textContent = toolData.buttonTextAfterClick || 'Done!';
+                                        button.style.backgroundColor = theme.palette.success.main;
+                                    }}
+                                >
+                                    {toolData.buttonTextBeforeClick || 'Click to Proceed'}
+                                </Button>
+                            </div>
+                        );
+                    } catch (error) {
+                        return (
+                            <div style={aiMessageStyle}>
+                                <Typography variant="subtitle2" color="error" gutterBottom>
+                                    Error parsing user input tool data
+                                </Typography>
+                                <div>
+                                    {params.message.content?.text}
+                                </div>
+                            </div>
+                        );
+                    }
+                    break;
+
                 default:
                     return <>
                         <p>Tool message</p>
