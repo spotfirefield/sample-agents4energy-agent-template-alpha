@@ -26,7 +26,6 @@ export const onCreateChatMessage = /* GraphQL */ `subscription OnCreateChatMessa
       text
       __typename
     }
-    contextStepId
     createdAt
     id
     owner
@@ -104,7 +103,6 @@ export const onDeleteChatMessage = /* GraphQL */ `subscription OnDeleteChatMessa
       text
       __typename
     }
-    contextStepId
     createdAt
     id
     owner
@@ -182,7 +180,6 @@ export const onUpdateChatMessage = /* GraphQL */ `subscription OnUpdateChatMessa
       text
       __typename
     }
-    contextStepId
     createdAt
     id
     owner

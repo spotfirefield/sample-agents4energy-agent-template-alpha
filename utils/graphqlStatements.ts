@@ -72,7 +72,6 @@ export const listChatMessageByChatSessionIdAndCreatedAt = /* GraphQL */ `query L
   ) {
     items {
       chatSessionId
-      contextStepId
       content {
         text
       }
