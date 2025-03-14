@@ -9,7 +9,7 @@ import { Calculator } from "@langchain/community/tools/calculator";
 
 import { publishResponseStreamChunk } from "../graphql/mutations";
 
-
+import { userInputTool } from "./toolBox";
 import { Schema } from '../../data/resource';
 
 import { getLangChainChatMessagesStartingWithHumanMessage, getLangChainMessageTextContent, publishMessage, stringifyLimitStringLength } from '../../../utils/langChainUtils';
@@ -34,8 +34,7 @@ export const handler: Schema["invokeAgent"]["functionHandler"] = async (event, c
 
         const agentTools = [
             new Calculator(),
-            // createGardenInfoToolBuilder({ gardenId: event.arguments.gardenId }),
-            // createGardenPlanToolBuilder({ gardenId: event.arguments.gardenId, owner: event.identity.sub })
+            userInputTool
         ]
 
         const agent = createReactAgent({
@@ -44,7 +43,8 @@ export const handler: Schema["invokeAgent"]["functionHandler"] = async (event, c
         });
 
         let systemMessageContent = `
-You are a helpful llm agent showing a demo workflow. If you don't have the information you need, make a reasonable guess.
+You are a helpful llm agent showing a demo workflow. 
+If you don't have the access to the information you need, make a reasonable guess and continue the demo.
 Response chat message text content should be in markdown format.
 Today's date is ${new Date().toLocaleDateString()}.
         `//.replace(/^\s+/gm, '') //This trims the whitespace from the beginning of each line
