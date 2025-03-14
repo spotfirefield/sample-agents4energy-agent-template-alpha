@@ -1,29 +1,17 @@
 import { stringify } from 'yaml'
 import { useTheme } from '@mui/material/styles';
+import { Button, Typography } from '@mui/material';
 import CalculateIcon from '@mui/icons-material/Calculate';
 import BuildIcon from '@mui/icons-material/Build';
 
-// import { z } from "zod";
-
-// import { generateClient } from "aws-amplify/data";
-// import { type Schema } from "@/../amplify/data/resource";
-
 import { Message } from '@/../utils/types';
-// import { createGardenType, plannedStepArrayType } from '../../utils/types';
 
-// import { MuiMarkdown } from 'mui-markdown';
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import { Button, Typography } from '@mui/material';
-
-// const amplifyClient = generateClient<Schema>();
-
 
 
 const ChatMessage = (params: {
     message: Message,
-    // setChatSession: (newGarden: Schema["ChatSession"]["createType"]) => void,
-    // setPlannedSteps: (newPlannedSteps: PlannedSteps) => void
 }) => {
     //Render either ai or human messages based on the params.message.role
 
@@ -43,13 +31,6 @@ const ChatMessage = (params: {
         padding: theme.spacing(1),
         borderRadius: theme.shape.borderRadius,
     };
-
-
-    let messageStyle = {};
-
-    // let proposedGarden: z.infer<typeof createGardenType>
-    // let proposedGarden: Schema["ChatSession"]["createType"] = {}
-    // const proposedSteps: PlannedSteps = []
 
     switch (params.message.role) {
         case 'ai':
@@ -192,6 +173,7 @@ const ChatMessage = (params: {
                                 </Typography>
                                 <div>
                                     {params.message.content?.text}
+                                    {String(error)}
                                 </div>
                             </div>
                         );
@@ -224,20 +206,6 @@ const ChatMessage = (params: {
             )
             break;
     }
-
-    if (['human', 'ai'].includes(params.message.role || 'noRole')) return (
-        <div style={messageStyle}>
-            <ReactMarkdown
-                remarkPlugins={[remarkGfm]}
-            >
-                {params.message.content?.text}
-            </ReactMarkdown>
-
-            {/* <pre>
-                {JSON.stringify(params.message, null, 2)}
-            </pre> */}
-        </div>
-    )
 }
 
 export default ChatMessage
