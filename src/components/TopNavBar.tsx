@@ -17,7 +17,7 @@ const TopNavBar: React.FC = () => {
   const router = useRouter();
   const [anchorEl, setAnchorEl] = React.useState<null | HTMLElement>(null);
 
-  const { user, signOut, authStatus } = useAuthenticator(context => [context.user, context.authStatus]);
+  const { signOut, authStatus } = useAuthenticator(context => [context.user, context.authStatus]);
   const { userAttributes } = useUserAttributes();
 
   const handleMenu = (event: React.MouseEvent<HTMLElement>) => {
