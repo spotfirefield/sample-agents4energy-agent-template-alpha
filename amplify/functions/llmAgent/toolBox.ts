@@ -18,9 +18,9 @@ export const userInputTool = tool(
     {
         name: "userInputTool",
         description: `
-Give the user a tool to act on the information you provided. 
-The action should be external to the chat, like sending an email or adding an item to a work management system.
-The tool can't be used to return any new information to the user. It should only propose actions that the user can take.
+Use this tool to send emails or add items to a work management system.
+The messages should never request information.
+They should only inform someone besides the user about an action they should take (including to review an item from the chat).
 `,
         schema: userInputToolSchema,
     }
