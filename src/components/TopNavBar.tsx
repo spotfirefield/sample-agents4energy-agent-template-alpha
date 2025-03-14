@@ -1,10 +1,16 @@
 "use client"
 import React from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { AppBar, Toolbar, Typography, Button, Menu, MenuItem, IconButton } from '@mui/material';
 import AccountCircle from '@mui/icons-material/AccountCircle';
 
+import { type Schema } from "@/../amplify/data/resource";
+import { generateClient } from 'aws-amplify/api';
+const amplifyClient = generateClient<Schema>();
+
 const TopNavBar: React.FC = () => {
+  const router = useRouter();
   const [anchorEl, setAnchorEl] = React.useState<null | HTMLElement>(null);
 
   const handleMenu = (event: React.MouseEvent<HTMLElement>) => {
@@ -20,6 +26,19 @@ const TopNavBar: React.FC = () => {
     handleClose();
   };
 
+  const handleCreateNewChat = async () => {
+    try {
+        const newChatSession = await amplifyClient.models.ChatSession.create({});
+
+        router.push(`/chat/${newChatSession.data!.id}`);
+
+        // alert("Chat created successfully!");
+    } catch (error) {
+        console.error("Error creating chat session:", error);
+        alert("Failed to create chat session.");
+    }
+};
+
   return (
     <AppBar position="static">
       <Toolbar>
@@ -30,9 +49,7 @@ const TopNavBar: React.FC = () => {
           <Link href="/listChats" passHref>
             <Button color="inherit">List Chats</Button>
           </Link>
-          <Link href="/create" passHref>
-            <Button color="inherit">Create</Button>
-          </Link>
+          <Button color="inherit" onClick={handleCreateNewChat}>Create</Button>
         </Typography>
         <div>
           <IconButton

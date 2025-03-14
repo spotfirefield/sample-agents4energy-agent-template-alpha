@@ -3,7 +3,7 @@ import React, { useEffect, useState } from 'react';
 
 import { generateClient } from "aws-amplify/data";
 import { type Schema } from "@/../amplify/data/resource";
-import { Box, Typography, Container, Paper, Divider } from '@mui/material';
+import { Box, Typography, Paper, Divider } from '@mui/material';
 
 import ChatBox from "@/components/ChatBox"
 import EditableTextBox from '@/components/EditableTextBox';
@@ -18,7 +18,6 @@ function Page({
     const [activeChatSession, setActiveChatSession] = useState<Schema["ChatSession"]["createType"]>();
 
     const setActiveChatSessionAndUpload = async (newChatSession: Schema["ChatSession"]["createType"]) => {
-        
         const {data: updatedChatSession} = await amplifyClient.models.ChatSession.update({
             id: (await params).chatSessionId,
             ...newChatSession
@@ -35,8 +34,7 @@ function Page({
                 const { data: newChatSessionData } = await amplifyClient.models.ChatSession.get({
                     id: chatSessionId
                 });
-                // console.log('newGardenData: ', newGardenData)
-                if (newChatSessionData) setActiveChatSession(newChatSessionData);
+                if (newChatSessionData) setActiveChatSession({...newChatSessionData, name: newChatSessionData.name || "New Chat"});
             }
         }
         fetchChatSession()

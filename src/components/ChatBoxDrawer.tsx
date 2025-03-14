@@ -4,7 +4,7 @@ import { styled, useTheme } from '@mui/material/styles';
 import { useState } from "react";
 
 import ChatBox from "./ChatBox"
-import { Schema } from "../../amplify/data/resource";
+// import { Schema } from "../../amplify/data/resource";
 
 const DrawerHeader = styled('div')(({ theme }) => ({
     display: 'flex',

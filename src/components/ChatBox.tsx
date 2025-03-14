@@ -193,7 +193,7 @@ const ChatBox = (params: {
       )}
       {messages.length === 0 &&
         <Box sx={{ textAlign: 'center', margin: '8px 0' }}>
-          <Typography variant="body2">Tell me about your dream garden</Typography>
+          <Typography variant="h5">How can I help you?</Typography>
           <List>
             {defaultPrompts.map((prompt, index) => (
               <ListItem key={index}>
