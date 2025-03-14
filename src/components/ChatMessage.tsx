@@ -8,6 +8,7 @@ import { Message } from '@/../utils/types';
 
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import { stringifyLimitStringLength } from '../../utils/langChainUtils';
 
 
 const ChatMessage = (params: {
@@ -70,7 +71,9 @@ const ChatMessage = (params: {
                                     fontSize: '0.85rem',
                                     marginTop: theme.spacing(0.5)
                                 }}>
-                                    {stringify(toolCall.args, null, 2)}
+                                    <pre>
+                                        {stringifyLimitStringLength(toolCall.args, 50)}
+                                    </pre>
                                 </div>
                             </div>
                         ))}
