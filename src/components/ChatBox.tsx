@@ -159,7 +159,8 @@ const ChatBox = (params: {
         overflowY: 'auto',
         flexDirection: 'column-reverse',
         display: 'flex',
-        mb: 2
+        mb: 2,
+        position: 'relative'
       }}>
         <List>
           {[
@@ -169,28 +170,11 @@ const ChatBox = (params: {
             <ListItem key={message.id}>
               <ChatMessage
                 message={message}
-                // setPlannedSteps={params.setPlannedSteps}
-                // setGarden={params.setGarden}
               />
             </ListItem>
           ))}
         </List>
       </Box>
-      {isLoading && (
-        <Box sx={{ 
-          display: 'flex', 
-          justifyContent: 'center', 
-          alignItems: 'center', 
-          margin: '16px 0',
-          flexDirection: 'column',
-          gap: 1
-        }}>
-          <CircularProgress size={40} color="primary" thickness={4} />
-          <Typography variant="body2" color="text.secondary">
-            Thinking...
-          </Typography>
-        </Box>
-      )}
       {messages.length === 0 &&
         <Box sx={{ textAlign: 'center', margin: '8px 0' }}>
           <Typography variant="h5">How can I help you?</Typography>
@@ -222,8 +206,44 @@ const ChatBox = (params: {
           }}
           disabled={isLoading}
         />
-        <Button variant="contained" color="primary" onClick={() => handleSend(userInput)} sx={{ marginTop: '8px', width: '100%' }}>
-          Send
+        <Button 
+          variant="contained" 
+          color={isLoading ? "secondary" : "primary"} 
+          onClick={() => handleSend(userInput)} 
+          sx={{ 
+            marginTop: '8px', 
+            width: '100%',
+            position: 'relative',
+            overflow: 'hidden',
+            ...(isLoading && {
+              '&::after': {
+                content: '""',
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent)',
+                animation: 'ripple 1.5s infinite',
+              },
+              '@keyframes ripple': {
+                '0%': {
+                  transform: 'translateX(-100%)',
+                },
+                '100%': {
+                  transform: 'translateX(100%)',
+                },
+              },
+            })
+          }}
+          disabled={isLoading}
+        >
+          {isLoading ? (
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <CircularProgress size={20} color="inherit" thickness={4} />
+              <span>Processing...</span>
+            </Box>
+          ) : 'Send'}
         </Button>
       </Box>
     </Box>
