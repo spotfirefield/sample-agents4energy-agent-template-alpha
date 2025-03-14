@@ -113,10 +113,6 @@ const ChatMessage = (params: {
                         ))}
                     </div>
                 )}
-
-                {/* <pre>
-                {JSON.stringify(params.message, null, 2)}
-            </pre> */}
             </div>
             break;
         case 'tool':

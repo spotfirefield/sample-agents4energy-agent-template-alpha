@@ -5,9 +5,9 @@ import Grid from '@mui/material/Grid2';
 
 import { useRouter } from 'next/navigation';
 
-// import { generateClient } from "aws-amplify/data";
-// import { type Schema } from "@/../amplify/data/resource";
-// const amplifyClient = generateClient<Schema>();
+import { generateClient } from "aws-amplify/data";
+import { type Schema } from "@/../amplify/data/resource";
+const amplifyClient = generateClient<Schema>();
 
 const LandingPage = () => {
   const router = useRouter();
@@ -27,12 +27,24 @@ const LandingPage = () => {
           size="large"
           sx={{ mt: 3 }}
           onClick={async () => {
-            router.push(`/create`);
+            const newChatSession = await amplifyClient.models.ChatSession.create({});
+            router.push(`/chat/${newChatSession.data!.id}`);
           }}
         >
           Start New Chat
         </Button>
-        <Button variant="outlined" color="secondary" size="large" sx={{ mt: 2, ml: 2 }} href="/listChats">
+        <Button 
+          variant="contained" 
+          color="secondary" 
+          size="large" 
+          sx={{ 
+            mt: 2, 
+            ml: 2, 
+            bgcolor: theme => theme.palette.secondary.main,
+            color: theme => theme.palette.secondary.contrastText
+          }} 
+          href="/listChats"
+        >
           Browse Chats
         </Button>
       </Box>
