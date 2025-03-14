@@ -7,10 +7,12 @@ import { useRouter } from 'next/navigation';
 
 import { generateClient } from "aws-amplify/data";
 import { type Schema } from "@/../amplify/data/resource";
+import { useAuthenticator } from '@aws-amplify/ui-react';
 const amplifyClient = generateClient<Schema>();
 
 const LandingPage = () => {
   const router = useRouter();
+  const { authStatus } = useAuthenticator(context => [context.authStatus]);
 
   return (
     <Container maxWidth="lg">

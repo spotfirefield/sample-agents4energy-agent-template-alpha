@@ -5,6 +5,10 @@ import { useRouter } from 'next/navigation';
 import { AppBar, Toolbar, Typography, Button, Menu, MenuItem, IconButton } from '@mui/material';
 import AccountCircle from '@mui/icons-material/AccountCircle';
 
+import { useAuthenticator } from '@aws-amplify/ui-react';
+// import { useUserAttributes } from '@/components/UserAttributesProvider';
+import { useUserAttributes } from '@/components/UserAttributesProvider';
+
 import { type Schema } from "@/../amplify/data/resource";
 import { generateClient } from 'aws-amplify/api';
 const amplifyClient = generateClient<Schema>();
@@ -12,6 +16,9 @@ const amplifyClient = generateClient<Schema>();
 const TopNavBar: React.FC = () => {
   const router = useRouter();
   const [anchorEl, setAnchorEl] = React.useState<null | HTMLElement>(null);
+
+  const { user, signOut, authStatus } = useAuthenticator(context => [context.user, context.authStatus]);
+  const { userAttributes } = useUserAttributes();
 
   const handleMenu = (event: React.MouseEvent<HTMLElement>) => {
     setAnchorEl(event.currentTarget);
@@ -21,23 +28,15 @@ const TopNavBar: React.FC = () => {
     setAnchorEl(null);
   };
 
-  const handleLogout = () => {
-    // Implement logout functionality here
-    handleClose();
-  };
-
   const handleCreateNewChat = async () => {
     try {
-        const newChatSession = await amplifyClient.models.ChatSession.create({});
-
-        router.push(`/chat/${newChatSession.data!.id}`);
-
-        // alert("Chat created successfully!");
+      const newChatSession = await amplifyClient.models.ChatSession.create({});
+      router.push(`/chat/${newChatSession.data!.id}`);
     } catch (error) {
-        console.error("Error creating chat session:", error);
-        alert("Failed to create chat session.");
+      console.error("Error creating chat session:", error);
+      alert("Failed to create chat session.");
     }
-};
+  };
 
   return (
     <AppBar position="static">
@@ -46,40 +45,62 @@ const TopNavBar: React.FC = () => {
           <Link href="/" passHref>
             <Button color="inherit">Home</Button>
           </Link>
-          <Link href="/listChats" passHref>
-            <Button color="inherit">List Chats</Button>
-          </Link>
-          <Button color="inherit" onClick={handleCreateNewChat}>Create</Button>
+          {authStatus === 'authenticated' && (
+            <>
+              <Link href="/listChats" passHref>
+                <Button color="inherit">List Chats</Button>
+              </Link>
+              <Button color="inherit" onClick={handleCreateNewChat}>Create</Button>
+            </>
+          )}
         </Typography>
         <div>
-          <IconButton
-            size="large"
-            edge="end"
-            aria-label="account of current user"
-            aria-controls="menu-appbar"
-            aria-haspopup="true"
-            onClick={handleMenu}
-            color="inherit"
-          >
-            <AccountCircle />
-          </IconButton>
-          <Menu
-            id="menu-appbar"
-            anchorEl={anchorEl}
-            anchorOrigin={{
-              vertical: 'top',
-              horizontal: 'right',
-            }}
-            keepMounted
-            transformOrigin={{
-              vertical: 'top',
-              horizontal: 'right',
-            }}
-            open={Boolean(anchorEl)}
-            onClose={handleClose}
-          >
-            <MenuItem onClick={handleLogout}>Logout</MenuItem>
-          </Menu>
+          {authStatus === 'authenticated' ? (
+            <>
+              <IconButton
+                size="large"
+                edge="end"
+                aria-label="account of current user"
+                aria-controls="menu-appbar"
+                aria-haspopup="true"
+                onClick={handleMenu}
+                color="inherit"
+              >
+
+                {userAttributes?.email && (
+                  <Typography variant="body2" color="inherit" sx={{ ml: 1, mr: 2 }}>
+                    {userAttributes.email}
+                  </Typography>
+                )}
+                <AccountCircle />
+              </IconButton>
+
+              <Menu
+                id="menu-appbar"
+                anchorEl={anchorEl}
+                anchorOrigin={{
+                  vertical: 'top',
+                  horizontal: 'right',
+                }}
+                keepMounted
+                transformOrigin={{
+                  vertical: 'top',
+                  horizontal: 'right',
+                }}
+                open={Boolean(anchorEl)}
+                onClose={handleClose}
+              >
+                <MenuItem onClick={signOut}>Logout</MenuItem>
+              </Menu>
+            </>
+          ) : (
+            <Button
+              color="inherit"
+              onClick={() => router.push('/auth')}
+            >
+              Login
+            </Button>
+          )}
         </div>
       </Toolbar>
     </AppBar>
