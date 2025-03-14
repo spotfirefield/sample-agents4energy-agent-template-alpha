@@ -44,7 +44,7 @@ const LandingPage = () => {
           color="secondary" 
           size="large" 
           sx={{ 
-            mt: 2, 
+            mt: 3, 
             ml: 2, 
             bgcolor: theme => theme.palette.secondary.main,
             color: theme => theme.palette.secondary.contrastText
