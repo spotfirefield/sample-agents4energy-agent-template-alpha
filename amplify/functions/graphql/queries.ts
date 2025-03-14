@@ -23,7 +23,6 @@ export const getChatMessage = /* GraphQL */ `query GetChatMessage($id: ID!) {
       text
       __typename
     }
-    contextStepId
     createdAt
     id
     owner
@@ -105,7 +104,6 @@ export const listChatMessageByChatSessionIdAndCreatedAt = /* GraphQL */ `query L
   ) {
     items {
       chatSessionId
-      contextStepId
       createdAt
       id
       owner
@@ -133,7 +131,6 @@ export const listChatMessages = /* GraphQL */ `query ListChatMessages(
   listChatMessages(filter: $filter, limit: $limit, nextToken: $nextToken) {
     items {
       chatSessionId
-      contextStepId
       createdAt
       id
       owner

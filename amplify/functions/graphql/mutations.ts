@@ -26,7 +26,6 @@ export const createChatMessage = /* GraphQL */ `mutation CreateChatMessage(
       text
       __typename
     }
-    contextStepId
     createdAt
     id
     owner
@@ -104,7 +103,6 @@ export const deleteChatMessage = /* GraphQL */ `mutation DeleteChatMessage(
       text
       __typename
     }
-    contextStepId
     createdAt
     id
     owner
@@ -202,7 +200,6 @@ export const updateChatMessage = /* GraphQL */ `mutation UpdateChatMessage(
       text
       __typename
     }
-    contextStepId
     createdAt
     id
     owner
