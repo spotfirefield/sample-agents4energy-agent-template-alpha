@@ -8,6 +8,8 @@ import { Box, Button, Card, CardContent, Typography } from '@mui/material';
 import DeleteIcon from '@mui/icons-material/Delete';
 const amplifyClient = generateClient<Schema>();
 
+import { withAuth } from '@/components/WithAuth';
+
 const Page = () => {
     const [chatSessions, setChatSessions] = useState<Schema["ChatSession"]["createType"][]>([]);
 
@@ -53,4 +55,4 @@ const Page = () => {
     );
 }
 
-export default Page;
+export default withAuth(Page);

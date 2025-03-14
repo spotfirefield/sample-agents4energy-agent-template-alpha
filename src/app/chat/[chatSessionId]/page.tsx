@@ -7,6 +7,7 @@ import { Box, Typography, Paper, Divider } from '@mui/material';
 
 import ChatBox from "@/components/ChatBox"
 import EditableTextBox from '@/components/EditableTextBox';
+import { withAuth } from '@/components/WithAuth';
 
 const amplifyClient = generateClient<Schema>();
 
@@ -18,7 +19,7 @@ function Page({
     const [activeChatSession, setActiveChatSession] = useState<Schema["ChatSession"]["createType"]>();
 
     const setActiveChatSessionAndUpload = async (newChatSession: Schema["ChatSession"]["createType"]) => {
-        const {data: updatedChatSession} = await amplifyClient.models.ChatSession.update({
+        const { data: updatedChatSession } = await amplifyClient.models.ChatSession.update({
             id: (await params).chatSessionId,
             ...newChatSession
         });
@@ -34,7 +35,7 @@ function Page({
                 const { data: newChatSessionData } = await amplifyClient.models.ChatSession.get({
                     id: chatSessionId
                 });
-                if (newChatSessionData) setActiveChatSession({...newChatSessionData, name: newChatSessionData.name || "New Chat"});
+                if (newChatSessionData) setActiveChatSession({ ...newChatSessionData, name: newChatSessionData.name || "New Chat" });
             }
         }
         fetchChatSession()
@@ -42,9 +43,9 @@ function Page({
 
     if (!activeChatSession || !activeChatSession.id) {
         return (
-            <Box sx={{ 
-                display: 'flex', 
-                justifyContent: 'center', 
+            <Box sx={{
+                display: 'flex',
+                justifyContent: 'center',
                 alignItems: 'center',
                 height: '100%'
             }}>
@@ -56,17 +57,17 @@ function Page({
     }
 
     return (
-        <Box sx={{ 
+        <Box sx={{
             height: '100%',
             display: 'flex',
             flexDirection: 'column',
             overflow: 'hidden',
             p: 2
         }}>
-            <Paper 
-                elevation={3} 
-                sx={{ 
-                    borderRadius: 2, 
+            <Paper
+                elevation={3}
+                sx={{
+                    borderRadius: 2,
                     overflow: 'hidden',
                     backgroundColor: '#f8f9fa',
                     boxShadow: '0 4px 20px rgba(0,0,0,0.08)',
@@ -75,8 +76,8 @@ function Page({
                     height: '100%'
                 }}
             >
-                <Box sx={{ 
-                    p: 3, 
+                <Box sx={{
+                    p: 3,
                     backgroundColor: '#fff',
                     borderBottom: '1px solid rgba(0,0,0,0.08)'
                 }}>
@@ -87,10 +88,10 @@ function Page({
                         typographyVariant="h3"
                     />
                 </Box>
-                
+
                 <Divider />
-                
-                <Box sx={{ 
+
+                <Box sx={{
                     display: 'flex',
                     flexDirection: 'column',
                     overflow: 'hidden',
@@ -107,4 +108,4 @@ function Page({
     );
 }
 
-export default Page;
+export default withAuth(Page);
