@@ -5,9 +5,9 @@ import Grid from '@mui/material/Grid2';
 
 import { useRouter } from 'next/navigation';
 
-import { generateClient } from "aws-amplify/data";
-import { type Schema } from "@/../amplify/data/resource";
-const amplifyClient = generateClient<Schema>();
+// import { generateClient } from "aws-amplify/data";
+// import { type Schema } from "@/../amplify/data/resource";
+// const amplifyClient = generateClient<Schema>();
 
 const LandingPage = () => {
   const router = useRouter();
