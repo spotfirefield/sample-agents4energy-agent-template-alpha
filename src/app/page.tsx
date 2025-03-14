@@ -29,8 +29,12 @@ const LandingPage = () => {
           size="large"
           sx={{ mt: 3 }}
           onClick={async () => {
-            const newChatSession = await amplifyClient.models.ChatSession.create({});
-            router.push(`/chat/${newChatSession.data!.id}`);
+            if (authStatus === 'authenticated') {
+              const newChatSession = await amplifyClient.models.ChatSession.create({});
+              router.push(`/chat/${newChatSession.data!.id}`);
+            } else {
+              router.push('/auth');
+            }
           }}
         >
           Start New Chat
@@ -45,7 +49,13 @@ const LandingPage = () => {
             bgcolor: theme => theme.palette.secondary.main,
             color: theme => theme.palette.secondary.contrastText
           }} 
-          href="/listChats"
+          onClick={() => {
+            if (authStatus === 'authenticated') {
+              router.push('/listChats');
+            } else {
+              router.push('/auth');
+            }
+          }}
         >
           Browse Chats
         </Button>
