@@ -1,7 +1,7 @@
 'use client';
 // import { NextUIProvider } from '@nextui-org/react';
 import { Authenticator } from '@aws-amplify/ui-react';
-
+import { UserAttributesProvider } from '@/components/UserAttributesProvider';
 // // Set up internationalization
 // import { I18nProvider } from '@cloudscape-design/components/i18n';
 // // Import all locales
@@ -13,9 +13,9 @@ import { Authenticator } from '@aws-amplify/ui-react';
 export default function Providers({ children }: { children: React.ReactNode }) {
   return (
     <Authenticator.Provider>
-        {/* <I18nProvider locale="en" messages={[enMessages]}> */}
-          {children}
-        {/* </I18nProvider> */}
+         <UserAttributesProvider>
+            {children}
+          </UserAttributesProvider>
     </Authenticator.Provider>
   )
 }
