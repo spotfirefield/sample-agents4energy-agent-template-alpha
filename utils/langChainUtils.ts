@@ -41,7 +41,7 @@ export function stringifyLimitStringLength(obj: any, maxLength: number = 200) {
 
 export const publishMessage = async (props: PublishMessageCommandInput) => {
     const amplifyClient = getConfiguredAmplifyClient();
-    
+
     // console.log('chatMessages: ', this.chatMessages)
 
     const messageTextContent = getLangChainMessageTextContent(props.message)
@@ -63,22 +63,23 @@ export const publishMessage = async (props: PublishMessageCommandInput) => {
     switch (props.message.getType()) {
         case "ai":
             const toolCalls = (props.message as AIMessageChunk).tool_calls
-            input = { 
-                ...input, 
-                role: APITypes.ChatMessageRole.ai, 
+            input = {
+                ...input,
+                role: APITypes.ChatMessageRole.ai,
                 toolCalls: JSON.stringify(toolCalls),
                 responseComplete: ( //If the AI message has no tool calls, set responseComplete to true
-                    !toolCalls || 
+                    !toolCalls ||
                     toolCalls?.length === 0
                 )
             }
             break;
         case "tool":
-            input = { 
-                ...input, 
-                role: APITypes.ChatMessageRole.tool, 
-                toolCallId: (props.message as ToolMessage).tool_call_id, 
-                toolName: (props.message as ToolMessage).name || 'no tool name supplied' }
+            input = {
+                ...input,
+                role: APITypes.ChatMessageRole.tool,
+                toolCallId: (props.message as ToolMessage).tool_call_id,
+                toolName: (props.message as ToolMessage).name || 'no tool name supplied'
+            }
             break;
     }
 
@@ -119,23 +120,25 @@ export const convertAmplifyChatMessageToLangChainMessage = (message: Message) =>
 
 export const getLangChainChatMessagesStartingWithHumanMessage = async (chatSessionId: string) => {
     const amplifyClient = getConfiguredAmplifyClient()
-    const {data: {listChatMessageByChatSessionIdAndCreatedAt: {items: chatSessionMessages}}} = await amplifyClient.graphql({ //listChatMessageByChatSessionIdAndCreatedAt
-      query: listChatMessageByChatSessionIdAndCreatedAt,
-      variables: {
-          limit: 20,
-          chatSessionId: chatSessionId,
-          sortDirection: APITypes.ModelSortDirection.ASC,
-      }
+    const { data: { listChatMessageByChatSessionIdAndCreatedAt: { items: descendingChatSessionMessages } } } = await amplifyClient.graphql({ //listChatMessageByChatSessionIdAndCreatedAt
+        query: listChatMessageByChatSessionIdAndCreatedAt,
+        variables: {
+            limit: 20,
+            chatSessionId: chatSessionId,
+            sortDirection: APITypes.ModelSortDirection.DESC,
+        }
     })
-  
+    // Query in descending order to get the latest messages first, the reverse the array to present the messages in ascending order to the llm
+    const chatSessionMessages = descendingChatSessionMessages.reverse()
+
     const firstHumanMessageIndex = chatSessionMessages.findIndex((message) => message.role === 'human');
     const messagesStartingWithFirstHumanMessage = firstHumanMessageIndex === -1
-              ? []
-              : chatSessionMessages.slice(firstHumanMessageIndex);
-  
-    const langChainMessagesStartingWithFirstHumanMessage =  messagesStartingWithFirstHumanMessage.map(message => convertAmplifyChatMessageToLangChainMessage(message))
-  
+        ? []
+        : chatSessionMessages.slice(firstHumanMessageIndex);
+
+    const langChainMessagesStartingWithFirstHumanMessage = messagesStartingWithFirstHumanMessage.map(message => convertAmplifyChatMessageToLangChainMessage(message))
+
     // console.log('langChainMessagesStartingWithFirstHumanMessage: ', langChainMessagesStartingWithFirstHumanMessage)
-  
+
     return langChainMessagesStartingWithFirstHumanMessage
-  }
+}
