@@ -8,6 +8,7 @@ import { Message } from '@/../utils/types';
 
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import { stringifyLimitStringLength } from '../../utils/langChainUtils';
 
 
 const ChatMessage = (params: {
@@ -70,7 +71,9 @@ const ChatMessage = (params: {
                                     fontSize: '0.85rem',
                                     marginTop: theme.spacing(0.5)
                                 }}>
-                                    {stringify(toolCall.args, null, 2)}
+                                    <pre>
+                                        {stringifyLimitStringLength(toolCall.args, 50)}
+                                    </pre>
                                 </div>
                             </div>
                         ))}
@@ -129,20 +132,19 @@ const ChatMessage = (params: {
                                 maxWidth: '90%',
                                 margin: theme.spacing(1, 0)
                             }}>
-                                <Typography variant="h6" gutterBottom sx={{ 
+                                <Typography variant="h6" gutterBottom sx={{
                                     color: theme.palette.primary.main,
                                     fontWeight: 'bold'
                                 }}>
                                     {toolData.title || 'User Action Required'}
                                 </Typography>
-                                
-                                <Typography variant="body2" sx={{ 
-                                    marginBottom: theme.spacing(2),
-                                    color: theme.palette.text.secondary
-                                }}>
+
+                                <ReactMarkdown
+                                    remarkPlugins={[remarkGfm]}
+                                >
                                     {toolData.description || 'Please take action by clicking the button below.'}
-                                </Typography>
-                                
+                                </ReactMarkdown>
+
                                 <Button
                                     variant="contained"
                                     color="primary"

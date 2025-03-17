@@ -3,7 +3,7 @@ import { generateClient } from "aws-amplify/data";
 import { Schema } from "../amplify/data/resource";
 import { Message } from "./types";
 
-const amplifyClient = generateClient<Schema>();
+// const amplifyClient = generateClient<Schema>();
 
 export const getConfiguredAmplifyClient = () => {
   Amplify.configure(
@@ -55,6 +55,7 @@ export const sendMessage = async (props: {
   chatSessionId: string,
   newMessage: Schema['ChatMessage']['createType']
 }) => {
+  const amplifyClient = generateClient<Schema>();
   const { data: newMessageData } = await amplifyClient.models.ChatMessage.create(props.newMessage)
 
   if (!props.newMessage.content || !props.newMessage.content.text) throw new Error("content.text is missing")
