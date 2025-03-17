@@ -12,7 +12,7 @@ import { createChatMessage } from "./graphqlStatements";
 
 
 
-const amplifyClient = getConfiguredAmplifyClient();
+// const amplifyClient = getConfiguredAmplifyClient();
 
 export function getLangChainMessageTextContent(message: HumanMessage | AIMessage | AIMessageChunk | ToolMessage): string | void {
     let messageTextContent: string = ''
@@ -40,6 +40,8 @@ export function stringifyLimitStringLength(obj: any, maxLength: number = 200) {
 }
 
 export const publishMessage = async (props: PublishMessageCommandInput) => {
+    const amplifyClient = getConfiguredAmplifyClient();
+    
     // console.log('chatMessages: ', this.chatMessages)
 
     const messageTextContent = getLangChainMessageTextContent(props.message)
