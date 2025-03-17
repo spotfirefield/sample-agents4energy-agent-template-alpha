@@ -132,20 +132,19 @@ const ChatMessage = (params: {
                                 maxWidth: '90%',
                                 margin: theme.spacing(1, 0)
                             }}>
-                                <Typography variant="h6" gutterBottom sx={{ 
+                                <Typography variant="h6" gutterBottom sx={{
                                     color: theme.palette.primary.main,
                                     fontWeight: 'bold'
                                 }}>
                                     {toolData.title || 'User Action Required'}
                                 </Typography>
-                                
-                                <Typography variant="body2" sx={{ 
-                                    marginBottom: theme.spacing(2),
-                                    color: theme.palette.text.secondary
-                                }}>
+
+                                <ReactMarkdown
+                                    remarkPlugins={[remarkGfm]}
+                                >
                                     {toolData.description || 'Please take action by clicking the button below.'}
-                                </Typography>
-                                
+                                </ReactMarkdown>
+
                                 <Button
                                     variant="contained"
                                     color="primary"
