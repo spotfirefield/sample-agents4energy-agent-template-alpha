@@ -102,16 +102,16 @@ export const convertAmplifyChatMessageToLangChainMessage = (message: Message) =>
     switch (message.role) {
         case 'human':
             return new HumanMessage({
-                content: message.content?.text || "",
+                content: message.content?.text || " ",
             })
         case 'ai':
             return new AIMessage({
-                content: message.content?.text || "",
+                content: message.content?.text || " ",
                 tool_calls: JSON.parse(message.toolCalls || '[]')
             })
         case 'tool':
             return new ToolMessage({
-                content: message.content?.text || "",
+                content: message.content?.text || " ",
                 tool_call_id: message.toolCallId || "",
                 name: message.toolName || "no tool name supplied"
             })
