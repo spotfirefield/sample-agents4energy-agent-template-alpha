@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   Box, 
   Typography, 
@@ -16,6 +16,20 @@ import DownloadIcon from '@mui/icons-material/Download';
 import ImageIcon from '@mui/icons-material/Image';
 import TextSnippetIcon from '@mui/icons-material/TextSnippet';
 import InsertDriveFileIcon from '@mui/icons-material/InsertDriveFile';
+import { useFileSystem } from '@/contexts/FileSystemContext';
+
+// File type detection helpers
+const isImageFile = (filename: string) => {
+  return /\.(jpeg|jpg|png|gif|bmp|svg|webp)$/i.test(filename);
+};
+
+const isTextFile = (filename: string) => {
+  return /\.(txt|md|js|jsx|ts|tsx|html|css|json|csv|yml|yaml|xml|log)$/i.test(filename);
+};
+
+const isPdfFile = (filename: string) => {
+  return /\.pdf$/i.test(filename);
+};
 
 interface FilePreviewProps {
   open: boolean;
@@ -26,51 +40,78 @@ interface FilePreviewProps {
 }
 
 const FilePreview: React.FC<FilePreviewProps> = ({ open, onClose, fileName, fileUrl, embedded = false }) => {
-  const [loading, setLoading] = useState(true);
+  const [textContent, setTextContent] = useState<string>('');
+  const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
-  const [fileContent, setFileContent] = useState<string | null>(null);
   
-  // Determine file type based on extension
-  const getFileType = (filename: string): 'image' | 'text' | 'other' => {
-    const extension = filename.substring(filename.lastIndexOf('.')).toLowerCase();
+  // Use a ref to track the last URL fetched to avoid duplicate fetches
+  const lastFetchedUrlRef = useRef<string>('');
+  
+  // Use the file system context to detect changes
+  const { lastRefreshTime } = useFileSystem();
+
+  // Fetch text content for text files
+  const fetchTextContent = async (url: string) => {
+    // Don't refetch the same URL
+    if (lastFetchedUrlRef.current === url) return;
     
-    if (['.jpg', '.jpeg', '.png', '.gif', '.svg'].includes(extension)) {
-      return 'image';
-    } else if (['.txt', '.md', '.json', '.csv', '.html', '.css', '.js'].includes(extension)) {
-      return 'text';
-    } else {
-      return 'other';
+    setLoading(true);
+    setError(null);
+    
+    try {
+      // The URL might have a signature/token that needs to be preserved
+      // Don't add parameters to the URL directly
+      const response = await fetch(url, { 
+        // Add cache-busting headers instead of URL parameters
+        headers: { 
+          'Pragma': 'no-cache',
+          'Cache-Control': 'no-cache, no-store, must-revalidate'
+        },
+        // Prevent browser caching
+        cache: 'no-store'
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Failed to fetch file: ${response.status} ${response.statusText}`);
+      }
+      
+      const text = await response.text();
+      setTextContent(text);
+      lastFetchedUrlRef.current = url;
+    } catch (err) {
+      console.error('Error fetching text file:', err);
+      setError('Failed to load file content.');
+    } finally {
+      setLoading(false);
     }
   };
   
-  const fileType = getFileType(fileName);
-  
-  // Fetch text content when needed
+  // Load text content when component mounts or when the fileUrl changes
   useEffect(() => {
-    if (!open || fileType !== 'text') return;
+    if (open && fileUrl && isTextFile(fileName)) {
+      fetchTextContent(fileUrl);
+    }
+  }, [open, fileUrl, fileName]);
+
+  // Reload content when file system updates are detected
+  useEffect(() => {
+    if (open && fileUrl && isTextFile(fileName) && lastRefreshTime > 0) {
+      // Force a reload by clearing the last fetched URL
+      lastFetchedUrlRef.current = '';
+      fetchTextContent(fileUrl);
+    }
+  }, [lastRefreshTime, open, fileUrl, fileName]);
+
+  // For image and PDF content, we'll use a cache-busting query parameter in the actual JSX
+  // This avoids modifying the original URL which might have authentication tokens
+  const getCacheBustedUrl = (url: string) => {
+    // Only add cache busting when we've had a refresh trigger
+    if (lastRefreshTime === 0) return url;
     
-    const fetchTextContent = async () => {
-      setLoading(true);
-      setError(null);
-      
-      try {
-        const response = await fetch(fileUrl);
-        if (!response.ok) {
-          throw new Error(`Failed to fetch file: ${response.status} ${response.statusText}`);
-        }
-        
-        const text = await response.text();
-        setFileContent(text);
-      } catch (err) {
-        console.error('Error loading file content:', err);
-        setError('Failed to load file content. The file might be too large or not accessible.');
-      } finally {
-        setLoading(false);
-      }
-    };
-    
-    fetchTextContent();
-  }, [open, fileUrl, fileType]);
+    // Preserve the original URL but add a timestamp parameter
+    const separator = url.includes('?') ? '&' : '?';
+    return `${url}${separator}_cb=${lastRefreshTime}`;
+  };
   
   const handleDownload = () => {
     const link = document.createElement('a');
@@ -82,10 +123,10 @@ const FilePreview: React.FC<FilePreviewProps> = ({ open, onClose, fileName, file
   };
   
   // Render file content based on type
-  const renderFileContent = () => {
+  const renderContent = () => {
     if (loading) {
       return (
-        <Box display="flex" justifyContent="center" alignItems="center" height="300px">
+        <Box display="flex" justifyContent="center" alignItems="center" height="100%">
           <CircularProgress />
         </Box>
       );
@@ -99,116 +140,114 @@ const FilePreview: React.FC<FilePreviewProps> = ({ open, onClose, fileName, file
       );
     }
     
-    switch (fileType) {
-      case 'image':
-        return (
-          <Box 
-            display="flex" 
-            justifyContent="center" 
-            p={2} 
-            sx={{ 
-              maxHeight: '70vh',
-              overflow: 'auto'
-            }}
-          >
-            <img 
-              src={fileUrl} 
-              alt={fileName} 
-              style={{ 
-                maxWidth: '100%', 
-                maxHeight: '100%',
-                objectFit: 'contain'
-              }} 
-              onLoad={() => setLoading(false)}
-              onError={() => {
-                setError('Failed to load image');
-                setLoading(false);
-              }}
-            />
-          </Box>
-        );
-        
-      case 'text':
-        return (
-          <Paper 
-            variant="outlined" 
-            sx={{ 
-              p: 2, 
-              maxHeight: '70vh', 
-              overflow: 'auto',
-              fontFamily: 'monospace',
-              whiteSpace: 'pre-wrap',
-              fontSize: '0.875rem',
-              backgroundColor: '#f5f5f5'
-            }}
-          >
-            {fileContent}
-          </Paper>
-        );
-        
-      default:
-        return (
-          <Box 
-            display="flex" 
-            flexDirection="column" 
-            alignItems="center" 
-            justifyContent="center" 
-            p={4}
-          >
-            <InsertDriveFileIcon sx={{ fontSize: 80, color: 'primary.main', mb: 2 }} />
-            <Typography variant="body1" gutterBottom>
-              This file type cannot be previewed directly.
-            </Typography>
-            <Button 
-              variant="contained" 
-              color="primary" 
-              startIcon={<DownloadIcon />}
-              onClick={handleDownload}
-              sx={{ mt: 2 }}
-            >
-              Download File
-            </Button>
-          </Box>
-        );
+    if (isImageFile(fileName)) {
+      return (
+        <Box 
+          display="flex" 
+          justifyContent="center" 
+          alignItems="center" 
+          height="100%"
+          overflow="auto"
+          p={2}
+        >
+          <img 
+            src={getCacheBustedUrl(fileUrl)} 
+            alt={fileName} 
+            style={{ 
+              maxWidth: '100%', 
+              maxHeight: '80vh',
+              objectFit: 'contain' 
+            }} 
+          />
+        </Box>
+      );
     }
+    
+    if (isPdfFile(fileName)) {
+      return (
+        <Box height="100%">
+          <iframe 
+            src={`${getCacheBustedUrl(fileUrl)}#toolbar=0`} 
+            title={fileName}
+            width="100%"
+            height="100%"
+            style={{ border: 'none' }}
+          />
+        </Box>
+      );
+    }
+    
+    if (isTextFile(fileName)) {
+      return (
+        <Box 
+          p={2} 
+          overflow="auto" 
+          height="100%"
+          sx={{ 
+            backgroundColor: '#f5f5f5',
+            fontFamily: 'monospace',
+            whiteSpace: 'pre-wrap',
+            fontSize: '0.9rem',
+            lineHeight: 1.5,
+            '&::-webkit-scrollbar': {
+              width: '8px',
+              height: '8px',
+            },
+            '&::-webkit-scrollbar-thumb': {
+              backgroundColor: 'rgba(0,0,0,0.2)',
+              borderRadius: '4px',
+            },
+          }}
+        >
+          {textContent}
+        </Box>
+      );
+    }
+    
+    return (
+      <Box p={3} textAlign="center">
+        <Typography>
+          Preview not available for this file type. <a href={fileUrl} target="_blank" rel="noreferrer">Download</a>
+        </Typography>
+      </Box>
+    );
   };
   
   // When embedded, return content directly without the Dialog wrapper
   if (embedded) {
     return (
-      <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-        <Box sx={{ 
-          display: 'flex', 
-          justifyContent: 'space-between', 
-          alignItems: 'center',
-          p: 1,
-          borderBottom: '1px solid rgba(0, 0, 0, 0.12)'
-        }}>
-          <Box display="flex" alignItems="center">
-            {fileType === 'image' ? (
-              <ImageIcon sx={{ mr: 1, color: 'primary.main' }} />
-            ) : fileType === 'text' ? (
-              <TextSnippetIcon sx={{ mr: 1, color: 'primary.main' }} />
-            ) : (
-              <InsertDriveFileIcon sx={{ mr: 1, color: 'primary.main' }} />
-            )}
-            <Typography variant="subtitle1" noWrap>
-              {fileName}
-            </Typography>
-          </Box>
-          <Button 
-            size="small"
-            onClick={handleDownload} 
-            startIcon={<DownloadIcon />}
-          >
-            Download
-          </Button>
+      <Paper 
+        elevation={0} 
+        sx={{ 
+          height: '100%',
+          display: 'flex',
+          flexDirection: 'column',
+          overflow: 'hidden',
+          borderRadius: 1,
+          border: '1px solid rgba(0,0,0,0.08)'
+        }}
+      >
+        <Box 
+          sx={{ 
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            p: 1,
+            bgcolor: 'background.paper',
+            borderBottom: '1px solid rgba(0,0,0,0.08)'
+          }}
+        >
+          <Typography variant="subtitle2" noWrap sx={{ maxWidth: '80%' }}>
+            {fileName}
+          </Typography>
+          <IconButton size="small" onClick={onClose}>
+            <CloseIcon fontSize="small" />
+          </IconButton>
         </Box>
-        
-        <Box sx={{ flexGrow: 1, overflow: 'auto' }}>
-          {renderFileContent()}
+        <Box sx={{ flexGrow: 1, overflow: 'hidden' }}>
+          {renderContent()}
         </Box>
-      </Box>
+      </Paper>
     );
   }
   
@@ -219,39 +258,22 @@ const FilePreview: React.FC<FilePreviewProps> = ({ open, onClose, fileName, file
       onClose={onClose}
       maxWidth="md"
       fullWidth
-      PaperProps={{
-        sx: {
-          borderRadius: 2,
-          boxShadow: '0 8px 32px rgba(0, 0, 0, 0.12)'
-        }
-      }}
+      sx={{ '& .MuiDialog-paper': { height: '90vh' } }}
     >
-      <DialogTitle sx={{ 
-        display: 'flex', 
-        justifyContent: 'space-between', 
-        alignItems: 'center',
-        bgcolor: 'background.paper',
-        borderBottom: '1px solid rgba(0, 0, 0, 0.12)'
-      }}>
-        <Box display="flex" alignItems="center">
-          {fileType === 'image' ? (
-            <ImageIcon sx={{ mr: 1, color: 'primary.main' }} />
-          ) : fileType === 'text' ? (
-            <TextSnippetIcon sx={{ mr: 1, color: 'primary.main' }} />
-          ) : (
-            <InsertDriveFileIcon sx={{ mr: 1, color: 'primary.main' }} />
-          )}
-          <Typography variant="h6" noWrap>
-            {fileName}
-          </Typography>
-        </Box>
-        <IconButton aria-label="close" onClick={onClose} size="small">
+      <DialogTitle sx={{ m: 0, p: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <Typography variant="h6" noWrap component="div" sx={{ paddingRight: 2 }}>
+          {fileName}
+        </Typography>
+        <IconButton
+          aria-label="close"
+          onClick={onClose}
+          sx={{ color: (theme) => theme.palette.grey[500] }}
+        >
           <CloseIcon />
         </IconButton>
       </DialogTitle>
-      
-      <DialogContent sx={{ p: 2, mt: 1 }}>
-        {renderFileContent()}
+      <DialogContent dividers sx={{ padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+        {renderContent()}
       </DialogContent>
       
       <DialogActions sx={{ borderTop: '1px solid rgba(0, 0, 0, 0.12)', p: 2 }}>

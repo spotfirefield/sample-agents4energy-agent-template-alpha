@@ -12,6 +12,7 @@ import TopNavBar from '@/components/TopNavBar';
 
 import "./globals.css";
 import "@aws-amplify/ui-react/styles.css";
+import { FileSystemProvider } from "@/contexts/FileSystemContext";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -28,8 +29,6 @@ export const metadata: Metadata = {
   description: "A digital assistant for your needs",
 };
 
-
-
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -42,25 +41,27 @@ export default function RootLayout({
       >
         <AppRouterCacheProvider>
           <ConfigureAmplify />
-          <Providers>
-            <ThemeProvider theme={theme}>
-              <CssBaseline />
-              <div style={{ 
-                display: 'flex', 
-                flexDirection: 'column', 
-                height: '100vh', 
-                overflow: 'hidden' 
-              }}>
-                <TopNavBar />
+          <FileSystemProvider>
+            <Providers>
+              <ThemeProvider theme={theme}>
+                <CssBaseline />
                 <div style={{ 
-                  flexGrow: 1, 
-                  overflow: 'auto' 
+                  display: 'flex', 
+                  flexDirection: 'column', 
+                  height: '100vh', 
+                  overflow: 'hidden' 
                 }}>
-                  {children}
+                  <TopNavBar />
+                  <div style={{ 
+                    flexGrow: 1, 
+                    overflow: 'auto' 
+                  }}>
+                    {children}
+                  </div>
                 </div>
-              </div>
-            </ThemeProvider>
-          </Providers>
+              </ThemeProvider>
+            </Providers>
+          </FileSystemProvider>
         </AppRouterCacheProvider>
       </body>
     </html>
