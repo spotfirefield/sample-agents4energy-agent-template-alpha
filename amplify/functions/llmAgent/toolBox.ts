@@ -1,7 +1,7 @@
 import { tool } from "@langchain/core/tools";
 import { z } from "zod";
-import * as fs from "fs";
 import * as path from "path";
+import { S3Client, PutObjectCommand, ListObjectsV2Command, GetObjectCommand } from "@aws-sdk/client-s3";
 
 const userInputToolSchema = z.object({
     title: z.string(),
@@ -56,28 +56,155 @@ const updateFileSchema = z.object({
     multiLine: z.boolean().optional().default(false).describe("Whether to enable multiline matching. This is a shorthand to set regexFlags to 'gm'. Only used when isRegex is true."),
 });
 
+// Helper functions for S3 operations
+function getS3Client() {
+    return new S3Client();
+}
+
+function getBucketName() {
+    const bucketName = process.env.STORAGE_BUCKET_NAME;
+    if (!bucketName) {
+        throw new Error("STORAGE_BUCKET_NAME is not set");
+    }
+    return bucketName;
+}
+
+// Global variable for storing the chat session ID provided by the handler
+let _chatSessionId: string | null = null;
+
+// Function to set the chat session ID from the handler
+export function setChatSessionId(chatSessionId: string) {
+    _chatSessionId = chatSessionId;
+}
+
+function getChatSessionPrefix() {
+    if (!_chatSessionId) {
+        throw new Error("Chat session ID not set. Call setChatSessionId first.");
+    }
+    
+    return `chatSessionArtifacts/sessionId=${_chatSessionId}/`;
+}
+
+async function listS3Objects(prefix: string) {
+    const s3Client = getS3Client();
+    const bucketName = getBucketName();
+    
+    const listParams = {
+        Bucket: bucketName,
+        Prefix: prefix,
+        Delimiter: '/' // Use delimiter to simulate directory structure
+    };
+    
+    try {
+        const command = new ListObjectsV2Command(listParams);
+        const response = await s3Client.send(command);
+        
+        // Combine CommonPrefixes (directories) and Contents (files)
+        const directories = (response.CommonPrefixes || [])
+            .map(prefixObj => prefixObj.Prefix?.replace(prefix, '').replace('/', ''))
+            .filter(name => name) as string[];
+            
+        const files = (response.Contents || [])
+            .filter(item => item.Key !== prefix) // Filter out the directory itself
+            .map(item => {
+                const key = item.Key as string;
+                return key.substring(prefix.length);
+            })
+            .filter(name => name && !name.endsWith('/') && !name.endsWith('.s3meta')); // Filter out directories and metadata files
+            
+        return [...directories, ...files];
+    } catch (error) {
+        console.error("Error listing S3 objects:", error);
+        throw error;
+    }
+}
+
+async function readS3Object(key: string) {
+    const s3Client = getS3Client();
+    const bucketName = getBucketName();
+    
+    const getParams = {
+        Bucket: bucketName,
+        Key: key
+    };
+    
+    try {
+        const command = new GetObjectCommand(getParams);
+        const response = await s3Client.send(command);
+        
+        if (response.Body) {
+            // Convert stream to string
+            const chunks: Buffer[] = [];
+            for await (const chunk of response.Body as any) {
+                chunks.push(chunk instanceof Buffer ? chunk : Buffer.from(chunk));
+            }
+            const content = Buffer.concat(chunks).toString('utf8');
+            return content;
+        } else {
+            throw new Error("No content found");
+        }
+    } catch (error) {
+        console.error(`Error reading S3 object ${key}:`, error);
+        throw error;
+    }
+}
+
+async function writeS3Object(key: string, content: string) {
+    const s3Client = getS3Client();
+    const bucketName = getBucketName();
+    
+    const putParams = {
+        Bucket: bucketName,
+        Key: key,
+        Body: content,
+        ContentType: getContentType(key)
+    };
+    
+    try {
+        const command = new PutObjectCommand(putParams);
+        await s3Client.send(command);
+        return true;
+    } catch (error) {
+        console.error(`Error writing S3 object ${key}:`, error);
+        throw error;
+    }
+}
+
+function getContentType(filePath: string): string {
+    const extension = path.extname(filePath).toLowerCase();
+    
+    const contentTypeMap: Record<string, string> = {
+        '.txt': 'text/plain',
+        '.html': 'text/html',
+        '.css': 'text/css',
+        '.js': 'application/javascript',
+        '.json': 'application/json',
+        '.png': 'image/png',
+        '.jpg': 'image/jpeg',
+        '.jpeg': 'image/jpeg',
+        '.gif': 'image/gif',
+        '.svg': 'image/svg+xml',
+        '.pdf': 'application/pdf',
+        '.md': 'text/markdown',
+        '.csv': 'text/csv',
+        '.xml': 'application/xml',
+        '.zip': 'application/zip'
+    };
+    
+    return contentTypeMap[extension] || 'application/octet-stream';
+}
+
 // Tool to list files
 export const listFiles = tool(
     async ({ directory = "" }) => {
         try {
-            const targetDir = path.resolve("/tmp", directory);
-            
-            // Create base tmp directory if it doesn't exist
-            const tmpDir = path.resolve("/tmp");
-            if (!fs.existsSync(tmpDir)) {
-                fs.mkdirSync(tmpDir, { recursive: true });
-                // If tmp/ didn't exist and we're trying to list a subdirectory,
-                // it won't exist either, so return an empty array
-                if (directory) {
-                    return JSON.stringify({ files: [] });
-                }
+            const sessionPrefix = getChatSessionPrefix();
+            let fullPrefix = path.posix.join(sessionPrefix, directory);
+            if (!fullPrefix.endsWith('/')) {
+                fullPrefix += '/';
             }
             
-            if (directory && !fs.existsSync(targetDir)) {
-                return JSON.stringify({ error: `Directory not found: ${directory}` });
-            }
-            
-            const files = fs.readdirSync(targetDir);
+            const files = await listS3Objects(fullPrefix);
             return JSON.stringify({ files });
         } catch (error: any) {
             return JSON.stringify({ error: `Error listing files: ${error.message}` });
@@ -85,37 +212,45 @@ export const listFiles = tool(
     },
     {
         name: "listFiles",
-        description: "Lists all files or a specified subdirectory",
+        description: "Lists all files or a specified subdirectory from S3 storage",
         schema: listFilesSchema,
     }
 );
 
-// Tool to read a file from the tmp/ directory
+// Tool to read a file from S3
 export const readFile = tool(
     async ({ filename }) => {
         try {
             // Normalize the path to prevent path traversal attacks
-            // by ensuring the final path is within the tmp directory
             const targetPath = path.normalize(filename);
             if (targetPath.startsWith("..")) {
                 return JSON.stringify({ error: "Invalid file path. Cannot access files outside project root directory." });
             }
             
-            const filePath = path.resolve("/tmp", targetPath);
-            const content = fs.readFileSync(filePath, "utf8");
-            return JSON.stringify({ content });
+            const sessionPrefix = getChatSessionPrefix();
+            const s3Key = path.posix.join(sessionPrefix, targetPath);
+            
+            try {
+                const content = await readS3Object(s3Key);
+                return JSON.stringify({ content });
+            } catch (error: any) {
+                if (error.name === 'NoSuchKey') {
+                    return JSON.stringify({ error: `File not found: ${filename}` });
+                }
+                throw error;
+            }
         } catch (error: any) {
             return JSON.stringify({ error: `Error reading file: ${error.message}` });
         }
     },
     {
         name: "readFile",
-        description: "Reads the content of a file, supports nested directories",
+        description: "Reads the content of a file from S3 storage, supports nested directories",
         schema: readFileSchema,
     }
 );
 
-// Tool to update a file without rewriting the entire content
+// Tool to update a file in S3
 export const updateFile = tool(
     async ({ 
         filename, 
@@ -134,30 +269,27 @@ export const updateFile = tool(
                 return JSON.stringify({ error: "Invalid file path. Cannot update files outside project root directory." });
             }
             
-            const tmpDir = path.resolve("/tmp");
-            // Create tmp directory if it doesn't exist
-            if (!fs.existsSync(tmpDir)) {
-                fs.mkdirSync(tmpDir, { recursive: true });
+            const sessionPrefix = getChatSessionPrefix();
+            const s3Key = path.posix.join(sessionPrefix, targetPath);
+            
+            // Check if file exists and get content if it does
+            let existingContent = "";
+            let fileExists = true;
+            
+            try {
+                existingContent = await readS3Object(s3Key);
+            } catch (error: any) {
+                if (error.name === 'NoSuchKey') {
+                    fileExists = false;
+                    
+                    // If file does not exist and createIfNotExists is false, return error
+                    if (!createIfNotExists) {
+                        return JSON.stringify({ error: `File does not exist: ${filename}` });
+                    }
+                } else {
+                    throw error;
+                }
             }
-            
-            const filePath = path.resolve(tmpDir, targetPath);
-            
-            // Create directory structure if needed
-            const dirPath = path.dirname(filePath);
-            if (!fs.existsSync(dirPath)) {
-                fs.mkdirSync(dirPath, { recursive: true });
-            }
-            
-            // Check if file exists
-            const fileExists = fs.existsSync(filePath);
-            
-            // If file does not exist and createIfNotExists is false, return error
-            if (!fileExists && !createIfNotExists) {
-                return JSON.stringify({ error: `File does not exist: ${filename}` });
-            }
-            
-            // Read existing content if file exists
-            let existingContent = fileExists ? fs.readFileSync(filePath, "utf8") : "";
             
             let newContent;
             
@@ -240,8 +372,8 @@ export const updateFile = tool(
                     return JSON.stringify({ error: "Invalid operation. Must be 'append', 'prepend', or 'replace'" });
             }
             
-            // Write the updated content to the file
-            fs.writeFileSync(filePath, newContent);
+            // Write the updated content to S3
+            await writeS3Object(s3Key, newContent);
             
             const operationMessage = {
                 "append": "appended to",
@@ -261,12 +393,12 @@ export const updateFile = tool(
     },
     {
         name: "updateFile",
-        description: "Updates a file by appending, prepending, or replacing content without rewriting the entire file. Supports multi-line replacements and regular expressions.",
+        description: "Updates a file in S3 storage by appending, prepending, or replacing content. Supports multi-line replacements and regular expressions.",
         schema: updateFileSchema,
     }
 );
 
-// Tool to write a file to the tmp/ directory
+// Tool to write a file to S3
 export const writeFile = tool(
     async ({ filename, content }) => {
         try {
@@ -276,29 +408,33 @@ export const writeFile = tool(
                 return JSON.stringify({ error: "Invalid file path. Cannot write files outside project root directory." });
             }
             
-            const tmpDir = path.resolve("/tmp");
-            // Create tmp directory if it doesn't exist
-            if (!fs.existsSync(tmpDir)) {
-                fs.mkdirSync(tmpDir, { recursive: true });
+            const sessionPrefix = getChatSessionPrefix();
+            const s3Key = path.posix.join(sessionPrefix, targetPath);
+            
+            // Create parent "directory" keys if needed
+            const dirPath = path.dirname(targetPath);
+            if (dirPath !== '.') {
+                const directories = dirPath.split('/').filter(Boolean);
+                let currentPath = sessionPrefix;
+                
+                for (const dir of directories) {
+                    currentPath = path.posix.join(currentPath, dir, '/');
+                    // Create an empty object with trailing slash to represent directory
+                    await writeS3Object(currentPath, '');
+                }
             }
             
-            const filePath = path.resolve(tmpDir, targetPath);
+            // Write the file to S3
+            await writeS3Object(s3Key, content);
             
-            // Create directory structure if needed
-            const dirPath = path.dirname(filePath);
-            if (!fs.existsSync(dirPath)) {
-                fs.mkdirSync(dirPath, { recursive: true });
-            }
-            
-            fs.writeFileSync(filePath, content);
-            return JSON.stringify({ success: true, message: `File ${filename} written successfully` });
+            return JSON.stringify({ success: true, message: `File ${filename} written successfully to S3` });
         } catch (error: any) {
             return JSON.stringify({ error: `Error writing file: ${error.message}` });
         }
     },
     {
         name: "writeFile",
-        description: "Writes content to a file, supports nested directories",
+        description: "Writes content to a file in S3 storage, supports nested directories",
         schema: writeFileSchema,
     }
 );
