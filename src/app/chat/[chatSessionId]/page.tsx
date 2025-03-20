@@ -65,30 +65,28 @@ function Page({
         );
     }
 
-    // Calculate content width based on drawer state
-    const contentWidth = isMobile
-        ? '100%'
-        : fileDrawerOpen 
-            ? 'calc(100% - 60%)' // Match the drawer width
-            : '100%';
+    // Drawer variant only matters for mobile now
+    const drawerVariant = "temporary";
 
     return (
         <Box sx={{
             height: '100%',
             display: 'flex',
-            flexDirection: 'row', // Change to row to allow side-by-side layout
             overflow: 'hidden',
             p: 2
         }}>
-            {/* Main chat area */}
+            {/* Main chat area - always full width with padding for desktop drawer */}
             <Box sx={{
-                flexGrow: 1,
-                width: contentWidth,
-                transition: theme.transitions.create('width', {
-                    easing: theme.transitions.easing.sharp,
-                    duration: theme.transitions.duration.leavingScreen,
+                height: '100%',
+                width: '100%',
+                position: 'relative',
+                transition: theme.transitions.create(['padding-right'], {
+                    easing: theme.transitions.easing.easeOut,
+                    duration: theme.transitions.duration.standard,
                 }),
-                overflow: 'hidden'
+                ...(fileDrawerOpen && !isMobile && {
+                    paddingRight: '45%'
+                })
             }}>
                 <Paper
                     elevation={3}
@@ -123,6 +121,7 @@ function Page({
                                 size="large"
                                 sx={{
                                     bgcolor: fileDrawerOpen ? 'rgba(25, 118, 210, 0.08)' : 'transparent',
+                                    zIndex: 1300 // Ensure button is above drawer
                                 }}
                             >
                                 <FolderIcon />
@@ -176,11 +175,12 @@ function Page({
                 </Box>
             )}
             
-            {/* File Drawer */}
+            {/* File Drawer - completely different handling for mobile vs desktop */}
             <FileDrawer 
                 open={fileDrawerOpen} 
                 onClose={() => setFileDrawerOpen(false)} 
-                chatSessionId={activeChatSession.id} 
+                chatSessionId={activeChatSession.id}
+                variant={drawerVariant}
             />
         </Box>
     );
