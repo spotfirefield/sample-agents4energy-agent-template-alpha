@@ -30,7 +30,7 @@ They should only inform someone besides the user about an action they should tak
 
 // Schema for listing files
 const listFilesSchema = z.object({
-    directory: z.string().optional().describe("Optional subdirectory to list files from"),
+    directory: z.string().optional().describe("Optional subdirectory to list files from. Use 'global' to access shared files across all sessions."),
 });
 
 // Schema for reading a file
@@ -77,12 +77,26 @@ export function setChatSessionId(chatSessionId: string) {
     _chatSessionId = chatSessionId;
 }
 
+// Global prefix for shared files
+const GLOBAL_PREFIX = 'global/';
+
 function getChatSessionPrefix() {
     if (!_chatSessionId) {
         throw new Error("Chat session ID not set. Call setChatSessionId first.");
     }
     
     return `chatSessionArtifacts/sessionId=${_chatSessionId}/`;
+}
+
+// Get the correct S3 prefix based on path
+function getS3KeyPrefix(filepath: string) {
+    // If path starts with 'global/', use the global prefix
+    if (filepath.startsWith('global/')) {
+        return '';
+    }
+    
+    // Otherwise use the session-specific prefix
+    return getChatSessionPrefix();
 }
 
 async function listS3Objects(prefix: string) {
@@ -99,19 +113,27 @@ async function listS3Objects(prefix: string) {
         const command = new ListObjectsV2Command(listParams);
         const response = await s3Client.send(command);
         
-        // Combine CommonPrefixes (directories) and Contents (files)
+        // Process directories (CommonPrefixes)
         const directories = (response.CommonPrefixes || [])
-            .map(prefixObj => prefixObj.Prefix?.replace(prefix, '').replace('/', ''))
-            .filter(name => name) as string[];
+            .map(prefixObj => {
+                const name = prefixObj.Prefix?.replace(prefix, '').replace('/', '');
+                return name ? { name, type: 'directory' } : null;
+            })
+            .filter(Boolean) as { name: string, type: 'directory' }[];
             
+        // Process files (Contents)
         const files = (response.Contents || [])
             .filter(item => item.Key !== prefix) // Filter out the directory itself
             .map(item => {
                 const key = item.Key as string;
-                return key.substring(prefix.length);
+                const name = key.substring(prefix.length);
+                return name && !name.endsWith('/') && !name.endsWith('.s3meta') 
+                    ? { name, type: 'file' } 
+                    : null;
             })
-            .filter(name => name && !name.endsWith('/') && !name.endsWith('.s3meta')); // Filter out directories and metadata files
+            .filter(Boolean) as { name: string, type: 'file' }[];
             
+        // Return combined array with type indicators
         return [...directories, ...files];
     } catch (error) {
         console.error("Error listing S3 objects:", error);
@@ -198,21 +220,52 @@ function getContentType(filePath: string): string {
 export const listFiles = tool(
     async ({ directory = "" }) => {
         try {
+            // Handle global directory listing
+            if (directory.startsWith('global') || directory === 'global') {
+                const globalDir = directory === 'global' ? 'global/' : directory;
+                let fullPrefix = path.posix.join('', globalDir);
+                if (!fullPrefix.endsWith('/')) {
+                    fullPrefix += '/';
+                }
+                
+                const items = await listS3Objects(fullPrefix);
+                // Group items by type for better clarity
+                const directories = items.filter(item => item.type === 'directory');
+                const files = items.filter(item => item.type === 'file');
+                
+                return JSON.stringify({ 
+                    path: directory,
+                    directories: directories.map(d => d.name),
+                    files: files.map(f => f.name),
+                    items // Keep the original items with type info for backward compatibility
+                });
+            }
+            
+            // Handle session-specific directory listing
             const sessionPrefix = getChatSessionPrefix();
             let fullPrefix = path.posix.join(sessionPrefix, directory);
             if (!fullPrefix.endsWith('/')) {
                 fullPrefix += '/';
             }
             
-            const files = await listS3Objects(fullPrefix);
-            return JSON.stringify({ files });
+            const items = await listS3Objects(fullPrefix);
+            // Group items by type for better clarity
+            const directories = items.filter(item => item.type === 'directory');
+            const files = items.filter(item => item.type === 'file');
+            
+            return JSON.stringify({ 
+                path: directory,
+                directories: directories.map(d => d.name),
+                files: files.map(f => f.name),
+                items // Keep the original items with type info for backward compatibility
+            });
         } catch (error: any) {
             return JSON.stringify({ error: `Error listing files: ${error.message}` });
         }
     },
     {
         name: "listFiles",
-        description: "Lists all files or a specified subdirectory from S3 storage",
+        description: "Lists files and directories from S3 storage. The response clearly distinguishes between directories and files. Use 'global' or 'global/path' to access shared files across all sessions, or a regular path for session-specific files.",
         schema: listFilesSchema,
     }
 );
@@ -227,8 +280,8 @@ export const readFile = tool(
                 return JSON.stringify({ error: "Invalid file path. Cannot access files outside project root directory." });
             }
             
-            const sessionPrefix = getChatSessionPrefix();
-            const s3Key = path.posix.join(sessionPrefix, targetPath);
+            const prefix = getS3KeyPrefix(targetPath);
+            const s3Key = path.posix.join(prefix, targetPath);
             
             try {
                 const content = await readS3Object(s3Key);
@@ -245,7 +298,7 @@ export const readFile = tool(
     },
     {
         name: "readFile",
-        description: "Reads the content of a file from S3 storage, supports nested directories",
+        description: "Reads the content of a file from S3 storage. Use 'global/filename' path to access shared files across all sessions.",
         schema: readFileSchema,
     }
 );
@@ -269,8 +322,13 @@ export const updateFile = tool(
                 return JSON.stringify({ error: "Invalid file path. Cannot update files outside project root directory." });
             }
             
-            const sessionPrefix = getChatSessionPrefix();
-            const s3Key = path.posix.join(sessionPrefix, targetPath);
+            // Prevent updating files with global/ prefix
+            if (targetPath.startsWith("global/")) {
+                return JSON.stringify({ error: "Cannot update files in the global directory. Global files are read-only." });
+            }
+            
+            const prefix = getChatSessionPrefix();
+            const s3Key = path.posix.join(prefix, targetPath);
             
             // Check if file exists and get content if it does
             let existingContent = "";
@@ -393,7 +451,7 @@ export const updateFile = tool(
     },
     {
         name: "updateFile",
-        description: "Updates a file in S3 storage by appending, prepending, or replacing content. Supports multi-line replacements and regular expressions.",
+        description: "Updates a file in session storage. Global files (global/filename) are read-only and cannot be updated.",
         schema: updateFileSchema,
     }
 );
@@ -408,14 +466,19 @@ export const writeFile = tool(
                 return JSON.stringify({ error: "Invalid file path. Cannot write files outside project root directory." });
             }
             
-            const sessionPrefix = getChatSessionPrefix();
-            const s3Key = path.posix.join(sessionPrefix, targetPath);
+            // Prevent writing files with global/ prefix
+            if (targetPath.startsWith("global/")) {
+                return JSON.stringify({ error: "Cannot write files to the global directory. Global files are read-only." });
+            }
+            
+            const prefix = getChatSessionPrefix();
+            const s3Key = path.posix.join(prefix, targetPath);
             
             // Create parent "directory" keys if needed
             const dirPath = path.dirname(targetPath);
             if (dirPath !== '.') {
                 const directories = dirPath.split('/').filter(Boolean);
-                let currentPath = sessionPrefix;
+                let currentPath = prefix;
                 
                 for (const dir of directories) {
                     currentPath = path.posix.join(currentPath, dir, '/');
@@ -434,7 +497,7 @@ export const writeFile = tool(
     },
     {
         name: "writeFile",
-        description: "Writes content to a file in S3 storage, supports nested directories",
+        description: "Writes content to a file in session storage. Global files (global/filename) are read-only and cannot be written to.",
         schema: writeFileSchema,
     }
 );

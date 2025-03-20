@@ -5,6 +5,9 @@ export const storage = defineStorage({
     access: (allow) => ({
         'chatSessionArtifacts/*': [
             allow.authenticated.to(['read', 'write', 'delete'])
+        ],
+        'global/*': [
+            allow.authenticated.to(['read'])
         ]
     })
 });

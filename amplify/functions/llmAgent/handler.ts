@@ -13,8 +13,6 @@ import { userInputTool, writeFile, listFiles, readFile, updateFile, setChatSessi
 import { Schema } from '../../data/resource';
 
 import { getLangChainChatMessagesStartingWithHumanMessage, getLangChainMessageTextContent, publishMessage, stringifyLimitStringLength } from '../../../utils/langChainUtils';
-import path from "path";
-import fs from "fs";
 import { S3Client } from "@aws-sdk/client-s3";
 import { EventEmitter } from "events";
 
@@ -41,16 +39,14 @@ export const handler: Schema["invokeAgent"]["functionHandler"] = async (event, c
         
         const amplifyClient = getConfiguredAmplifyClient();
 
+        // This function includes validation to prevent "The text field in the ContentBlock object is blank" errors
+        // by ensuring no message content is empty when sent to Bedrock
         const chatSessionMessages = await getLangChainChatMessagesStartingWithHumanMessage(event.arguments.chatSessionId)
 
         const agentModel = new ChatBedrockConverse({
             model: process.env.MODEL_ID,
             // temperature: 0
         });
-
-        // const pyodideInstance = await pyodide.loadPyodide();
-        // const pythonInterpreterTool = new PythonInterpreterTool({instance: pyodideInstance})
-        // await pythonInterpreterTool.addPackage("numpy");
 
         const agentTools = [
             new Calculator(),
@@ -72,6 +68,12 @@ You are a helpful llm agent showing a demo workflow.
 If you don't have the access to the information you need, make a reasonable guess and continue the demo.
 Use markdown formatting for your responses (like **bold**, *italic*, ## headings, etc.), but DO NOT wrap your response in markdown code blocks.
 Today's date is ${new Date().toLocaleDateString()}.
+
+When using the file management tools:
+- The listFiles tool returns separate 'directories' and 'files' fields to clearly distinguish between them
+- To access a directory, include the trailing slash in the path or use the directory name
+- To read a file, use the readFile tool with the complete path including the filename
+- Global files are shared across sessions and are read-only
         `//.replace(/^\s+/gm, '') //This trims the whitespace from the beginning of each line
         
         // If the chatSessionMessages ends with a human message, remove it.
@@ -87,7 +89,7 @@ Today's date is ${new Date().toLocaleDateString()}.
                 }),
                 ...chatSessionMessages,
                 new HumanMessage({
-                    content: event.arguments.userInput
+                    content: event.arguments.userInput || " " // Ensure user input is never empty
                 })
             ].filter((message): message is BaseMessage => message !== undefined)
         }
