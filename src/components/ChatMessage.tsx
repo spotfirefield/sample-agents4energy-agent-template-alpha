@@ -1,10 +1,11 @@
 import { useTheme } from '@mui/material/styles';
-import { Button, Typography } from '@mui/material';
+import { Button, Typography, Tooltip } from '@mui/material';
 import CalculateIcon from '@mui/icons-material/Calculate';
 import BuildIcon from '@mui/icons-material/Build';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import DescriptionIcon from '@mui/icons-material/Description';
 import UpdateIcon from '@mui/icons-material/Update';
+import VisibilityIcon from '@mui/icons-material/Visibility';
 import { useEffect, useRef } from 'react';
 
 import { Message } from '@/../utils/types';
@@ -444,7 +445,167 @@ const ChatMessage = (params: {
                         );
                     }
                     break;
-
+                case 'textToTableTool':
+                    try {
+                        const tableData = JSON.parse(params.message.content?.text || '{}');
+                        return (
+                            <div style={{
+                                backgroundColor: theme.palette.grey[50],
+                                padding: theme.spacing(2),
+                                borderRadius: theme.shape.borderRadius,
+                                boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
+                                width: '100%',
+                                overflowX: 'auto'
+                            }}>
+                                <div style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: theme.spacing(1),
+                                    marginBottom: theme.spacing(1.5),
+                                    color: theme.palette.primary.main
+                                }}> 
+                                    <DescriptionIcon />
+                                    <Typography variant="subtitle1" fontWeight="medium">
+                                        {tableData.messageContentType === 'tool_table' ? 'Table Data' : 'Table View'}
+                                    </Typography>
+                                </div>
+                                
+                                {tableData.columns && tableData.data && (
+                                    <div style={{ overflowX: 'auto', width: '100%' }}>
+                                        <table style={{ 
+                                            width: '100%', 
+                                            borderCollapse: 'collapse',
+                                            fontSize: '0.875rem',
+                                            boxShadow: '0 2px 4px rgba(0,0,0,0.05)',
+                                            backgroundColor: theme.palette.common.white
+                                        }}>
+                                            <thead>
+                                                <tr style={{
+                                                    backgroundColor: theme.palette.primary.main,
+                                                    color: theme.palette.primary.contrastText
+                                                }}>
+                                                    {tableData.columns.map((col: string, i: number) => (
+                                                        <th key={i} style={{ 
+                                                            padding: theme.spacing(1, 1.5),
+                                                            textAlign: 'left',
+                                                            fontWeight: 'bold'
+                                                        }}>
+                                                            {col}
+                                                        </th>
+                                                    ))}
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {tableData.data.map((row: any, rowIndex: number) => {
+                                                    const hasFilePath = !!row.filePath;
+                                                    const rowBgColor = rowIndex % 2 === 0 ? theme.palette.common.white : theme.palette.grey[50];
+                                                    
+                                                    return (
+                                                    <Tooltip 
+                                                        key={`row-${rowIndex}-${row.filePath || rowIndex}`}
+                                                        title={hasFilePath ? `View file: ${row.filePath}` : ''}
+                                                        placement="top"
+                                                        disableHoverListener={!hasFilePath}
+                                                        arrow
+                                                    >
+                                                        <tr style={{
+                                                            backgroundColor: rowBgColor,
+                                                            borderBottom: `1px solid ${theme.palette.grey[200]}`,
+                                                            cursor: hasFilePath ? 'pointer' : 'default',
+                                                            transition: 'background-color 0.2s ease'
+                                                        }} 
+                                                        onClick={() => {
+                                                            if (hasFilePath) {
+                                                                // Navigate to the files page with the s3Key
+                                                                const encodedPath = row.filePath.split('/').map((segment: string) => encodeURIComponent(segment)).join('/');
+                                                                window.open(`/files/${encodedPath}`, '_blank');
+                                                            }
+                                                        }}
+                                                        onMouseEnter={(e) => {
+                                                            if (hasFilePath) {
+                                                                e.currentTarget.style.backgroundColor = theme.palette.action.hover;
+                                                            }
+                                                        }}
+                                                        onMouseLeave={(e) => {
+                                                            if (hasFilePath) {
+                                                                e.currentTarget.style.backgroundColor = rowBgColor;
+                                                            }
+                                                        }}
+                                                        >
+                                                            {tableData.columns.map((col: string, colIndex: number) => (
+                                                                <td key={colIndex} style={{ 
+                                                                    padding: theme.spacing(1, 1.5),
+                                                                    borderBottom: `1px solid ${theme.palette.grey[200]}`,
+                                                                    maxWidth: '250px',
+                                                                    overflow: 'hidden',
+                                                                    textOverflow: 'ellipsis',
+                                                                    position: 'relative'
+                                                                }}>
+                                                                    {row.error && col === tableData.columns[0] ? (
+                                                                        <span style={{ color: theme.palette.error.main }}>
+                                                                            {row.error}
+                                                                        </span>
+                                                                    ) : (
+                                                                        <div style={{
+                                                                            maxHeight: col === 'Details' ? '100px' : 'none',
+                                                                            overflow: col === 'Details' ? 'auto' : 'visible',
+                                                                            whiteSpace: 'pre-wrap',
+                                                                            display: 'flex',
+                                                                            alignItems: 'center',
+                                                                            gap: '4px'
+                                                                        }}>
+                                                                            {String(row[col] || '')}
+                                                                            {hasFilePath && colIndex === 0 && (
+                                                                                <VisibilityIcon 
+                                                                                    fontSize="small" 
+                                                                                    style={{ 
+                                                                                        fontSize: '14px',
+                                                                                        opacity: 0.6,
+                                                                                        color: theme.palette.primary.main
+                                                                                    }} 
+                                                                                />
+                                                                            )}
+                                                                        </div>
+                                                                    )}
+                                                                </td>
+                                                            ))}
+                                                        </tr>
+                                                    </Tooltip>
+                                                    );
+                                                })}
+                                            </tbody>
+                                        </table>
+                                        {tableData.matchedFileCount && (
+                                            <Typography variant="caption" color="textSecondary" style={{ 
+                                                display: 'block',
+                                                marginTop: theme.spacing(1),
+                                                textAlign: 'right'
+                                            }}>
+                                                Showing results from {tableData.matchedFileCount} matched files
+                                            </Typography>
+                                        )}
+                                    </div>
+                                )}
+                                
+                                {(!tableData.columns || !tableData.data) && (
+                                    <Typography variant="body2" color="error">
+                                        Invalid table data format
+                                    </Typography>
+                                )}
+                            </div>
+                        );
+                    } catch (error) {
+                        return (
+                            <div style={aiMessageStyle}>
+                                <Typography variant="subtitle2" color="error" gutterBottom>
+                                    Error processing table data
+                                </Typography>
+                                <pre>
+                                    {params.message.content?.text}
+                                </pre>
+                            </div>
+                        );
+                    }   
                 default:
                     return <>
                         <p>Tool message</p>
