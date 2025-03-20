@@ -58,6 +58,7 @@ interface FileItem {
 
 interface FileExplorerProps {
   chatSessionId: string;
+  onFileSelect?: (file: FileItem) => void;
 }
 
 const StyledListItem = styled(ListItemButton)(({ theme }) => ({
@@ -68,7 +69,7 @@ const StyledListItem = styled(ListItemButton)(({ theme }) => ({
   marginBottom: 4,
 }));
 
-const FileExplorer: React.FC<FileExplorerProps> = ({ chatSessionId }) => {
+const FileExplorer: React.FC<FileExplorerProps> = ({ chatSessionId, onFileSelect }) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [fileStructure, setFileStructure] = useState<FileItem[]>([]);
@@ -170,8 +171,13 @@ const FileExplorer: React.FC<FileExplorerProps> = ({ chatSessionId }) => {
   // Handle file click
   const handleFileClick = (file: FileItem) => {
     if (!file.isFolder && file.url) {
-      setSelectedFile(file);
-      setPreviewOpen(true);
+      // Call onFileSelect if provided
+      if (onFileSelect) {
+        onFileSelect(file);
+      } else {
+        setSelectedFile(file);
+        setPreviewOpen(true);
+      }
     }
   };
   

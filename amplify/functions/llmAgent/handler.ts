@@ -382,7 +382,7 @@ async function uploadDirectoryToS3(
             await uploadDirectoryToS3(itemPath, bucketName, subDirPrefix, s3Client);
         } else {
             // Calculate the S3 key, removing the tmpDir part from the path
-            const relativePath = path.relative(path.resolve("tmp"), itemPath);
+            const relativePath = path.relative(path.resolve("/tmp"), itemPath);
             const s3Key = `${prefix}${relativePath}`;
             
             // Read the file

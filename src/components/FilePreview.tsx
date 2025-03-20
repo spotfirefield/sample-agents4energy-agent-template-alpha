@@ -22,9 +22,10 @@ interface FilePreviewProps {
   onClose: () => void;
   fileName: string;
   fileUrl: string;
+  embedded?: boolean;
 }
 
-const FilePreview: React.FC<FilePreviewProps> = ({ open, onClose, fileName, fileUrl }) => {
+const FilePreview: React.FC<FilePreviewProps> = ({ open, onClose, fileName, fileUrl, embedded = false }) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [fileContent, setFileContent] = useState<string | null>(null);
@@ -172,6 +173,46 @@ const FilePreview: React.FC<FilePreviewProps> = ({ open, onClose, fileName, file
     }
   };
   
+  // When embedded, return content directly without the Dialog wrapper
+  if (embedded) {
+    return (
+      <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+        <Box sx={{ 
+          display: 'flex', 
+          justifyContent: 'space-between', 
+          alignItems: 'center',
+          p: 1,
+          borderBottom: '1px solid rgba(0, 0, 0, 0.12)'
+        }}>
+          <Box display="flex" alignItems="center">
+            {fileType === 'image' ? (
+              <ImageIcon sx={{ mr: 1, color: 'primary.main' }} />
+            ) : fileType === 'text' ? (
+              <TextSnippetIcon sx={{ mr: 1, color: 'primary.main' }} />
+            ) : (
+              <InsertDriveFileIcon sx={{ mr: 1, color: 'primary.main' }} />
+            )}
+            <Typography variant="subtitle1" noWrap>
+              {fileName}
+            </Typography>
+          </Box>
+          <Button 
+            size="small"
+            onClick={handleDownload} 
+            startIcon={<DownloadIcon />}
+          >
+            Download
+          </Button>
+        </Box>
+        
+        <Box sx={{ flexGrow: 1, overflow: 'auto' }}>
+          {renderFileContent()}
+        </Box>
+      </Box>
+    );
+  }
+  
+  // Original Dialog view for non-embedded mode
   return (
     <Dialog
       open={open}
