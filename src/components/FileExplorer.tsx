@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { list, getUrl } from 'aws-amplify/storage';
+import JSZip from 'jszip';
+import { saveAs } from 'file-saver';
 import { 
   Box, 
   Typography, 
@@ -13,7 +15,10 @@ import {
   IconButton,
   Breadcrumbs,
   Link as MuiLink,
-  Badge
+  Badge,
+  Tooltip,
+  Snackbar,
+  Alert
 } from '@mui/material';
 import FolderIcon from '@mui/icons-material/Folder';
 import FolderOpenIcon from '@mui/icons-material/FolderOpen';
@@ -22,6 +27,8 @@ import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
+import DownloadIcon from '@mui/icons-material/Download';
+import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import { styled } from '@mui/material/styles';
 import FilePreview from './FilePreview';
 import { useFileSystem } from '@/contexts/FileSystemContext';
@@ -70,6 +77,7 @@ const StyledListItem = styled(ListItemButton)(({ theme }) => ({
     backgroundColor: 'rgba(0, 0, 0, 0.04)',
   },
   marginBottom: 4,
+  paddingRight: 48,
 }));
 
 const FileExplorer: React.FC<FileExplorerProps> = ({ chatSessionId, onFileSelect }) => {
@@ -83,6 +91,11 @@ const FileExplorer: React.FC<FileExplorerProps> = ({ chatSessionId, onFileSelect
   // File preview state
   const [previewOpen, setPreviewOpen] = useState(false);
   const [selectedFile, setSelectedFile] = useState<FileItem | null>(null);
+
+  // Download status state
+  const [isDownloading, setIsDownloading] = useState(false);
+  const [downloadMessage, setDownloadMessage] = useState('');
+  const [showDownloadMessage, setShowDownloadMessage] = useState(false);
 
   // Use the file system context
   const { lastRefreshTime, isRefreshing } = useFileSystem();
@@ -231,6 +244,161 @@ const FileExplorer: React.FC<FileExplorerProps> = ({ chatSessionId, onFileSelect
     setSelectedFile(null);
   };
   
+  // Handle opening a file in a new tab
+  const handleFileOpen = (event: React.MouseEvent<HTMLButtonElement>, file: FileItem) => {
+    event.stopPropagation(); // Prevent triggering file click
+    if (file.url) {
+      // Open in a new tab instead of downloading
+      window.open(file.url, '_blank');
+      
+      setDownloadMessage(`Opened ${file.name} in a new tab`);
+      setShowDownloadMessage(true);
+    }
+  };
+
+  // Helper function to recursively get all files in a folder and its subfolders
+  const getAllFilesInFolder = async (folderPath: string): Promise<FileItem[]> => {
+    try {
+      const fullPath = `${basePath}${folderPath}`;
+      const result = await list({ path: fullPath });
+      
+      let allFiles: FileItem[] = [];
+      
+      for (const item of result.items) {
+        const itemPath = item.path;
+        if (!itemPath) continue;
+        
+        const name = itemPath.split('/').pop() || '';
+        const isFolder = itemPath.endsWith('/');
+        
+        // Skip .s3meta files
+        if (name.endsWith('.s3meta')) continue;
+        
+        if (isFolder) {
+          // Recursively get files from subfolders
+          const relativePath = itemPath.replace(basePath, '');
+          const subfolderFiles = await getAllFilesInFolder(relativePath);
+          allFiles = [...allFiles, ...subfolderFiles];
+        } else {
+          let url = '';
+          try {
+            const fileUrl = await getUrl({ path: itemPath });
+            url = fileUrl.url.toString();
+          } catch (e) {
+            console.error(`Error getting URL for ${itemPath}:`, e);
+          }
+          
+          allFiles.push({
+            key: itemPath,
+            path: itemPath.replace(basePath, ''),
+            isFolder: false,
+            name,
+            url,
+            lastRefreshTime: Date.now(),
+          });
+        }
+      }
+      
+      return allFiles;
+    } catch (error) {
+      console.error('Error getting files in folder:', error);
+      return [];
+    }
+  };
+
+  // Handle download for a folder
+  const handleFolderDownload = async (event: React.MouseEvent<HTMLButtonElement>, folder: FileItem) => {
+    event.stopPropagation(); // Prevent triggering folder click
+    setIsDownloading(true);
+    setDownloadMessage(`Preparing ${folder.name} for download...`);
+    setShowDownloadMessage(true);
+    
+    try {
+      // Get all files in the folder
+      const files = await getAllFilesInFolder(folder.path);
+      
+      if (files.length === 0) {
+        setDownloadMessage(`Folder "${folder.name}" is empty. Nothing to download.`);
+        setShowDownloadMessage(true);
+        setIsDownloading(false);
+        return;
+      }
+      
+      // Create a new zip file
+      const zip = new JSZip();
+      let addedCount = 0;
+      
+      // Add files to the zip
+      const filePromises = files.map(async (file) => {
+        if (!file.url) return;
+        
+        try {
+          // Fetch the file content
+          const response = await fetch(file.url, {
+            headers: { 
+              'Pragma': 'no-cache',
+              'Cache-Control': 'no-cache, no-store, must-revalidate'
+            },
+            cache: 'no-store'
+          });
+          
+          if (!response.ok) {
+            throw new Error(`Failed to fetch file: ${response.status} ${response.statusText}`);
+          }
+          
+          const blob = await response.blob();
+          
+          // Get relative path within the folder
+          const relativePath = file.path.replace(folder.path, '');
+          
+          // Add the file to the zip
+          zip.file(relativePath, blob);
+          addedCount++;
+          
+          // Update progress message periodically
+          if (addedCount % 5 === 0 || addedCount === files.length) {
+            setDownloadMessage(`Preparing ${folder.name}: ${addedCount}/${files.length} files...`);
+          }
+        } catch (error) {
+          console.error(`Error fetching file ${file.name}:`, error);
+        }
+      });
+      
+      // Wait for all files to be fetched and added to the zip
+      await Promise.all(filePromises);
+      
+      if (addedCount === 0) {
+        setDownloadMessage(`Could not download any files from "${folder.name}". Check permissions.`);
+        setIsDownloading(false);
+        return;
+      }
+      
+      // Generate the zip file
+      setDownloadMessage(`Creating zip file for ${folder.name}...`);
+      const zipBlob = await zip.generateAsync({ 
+        type: 'blob',
+        compression: 'DEFLATE', // Use compression
+        compressionOptions: { level: 6 } // Medium compression level
+      });
+      
+      // Save the zip file
+      saveAs(zipBlob, `${folder.name}.zip`);
+      
+      setDownloadMessage(`Downloaded ${folder.name} as a zip file (${addedCount} files)`);
+    } catch (error) {
+      console.error('Error downloading folder:', error);
+      setDownloadMessage('Error downloading folder. Please try again.');
+    } finally {
+      setIsDownloading(false);
+      setShowDownloadMessage(true);
+    }
+  };
+  
+  // Handle closing the download message
+  const handleCloseMessage = () => {
+    setShowDownloadMessage(false);
+  };
+  
   if (loading && fileStructure.length === 0) {
     return (
       <Box display="flex" justifyContent="center" alignItems="center" height="100%">
@@ -319,7 +487,40 @@ const FileExplorer: React.FC<FileExplorerProps> = ({ chatSessionId, onFileSelect
       }}>
         <List dense>
           {fileStructure.map((item) => (
-            <ListItem key={item.key} disablePadding>
+            <ListItem 
+              key={item.key} 
+              disablePadding
+              secondaryAction={
+                <Tooltip title={item.isFolder 
+                  ? "Download folder as zip file" 
+                  : `Open ${item.name} in new tab`
+                }>
+                  <IconButton 
+                    edge="end" 
+                    size="small"
+                    onClick={(e) => item.isFolder 
+                      ? handleFolderDownload(e, item) 
+                      : handleFileOpen(e, item)
+                    }
+                    sx={{ 
+                      opacity: 0.7, 
+                      '&:hover': { 
+                        opacity: 1,
+                        color: 'primary.main'
+                      } 
+                    }}
+                    disabled={isDownloading}
+                    color="inherit"
+                  >
+                    {item.isFolder ? (
+                      <DownloadIcon fontSize="small" />
+                    ) : (
+                      <OpenInNewIcon fontSize="small" />
+                    )}
+                  </IconButton>
+                </Tooltip>
+              }
+            >
               <StyledListItem
                 onClick={() => item.isFolder 
                   ? handleFolderClick(item) 
@@ -355,6 +556,23 @@ const FileExplorer: React.FC<FileExplorerProps> = ({ chatSessionId, onFileSelect
           fileUrl={selectedFile.url || ''}
         />
       )}
+      
+      {/* Download status message */}
+      <Snackbar 
+        open={showDownloadMessage} 
+        autoHideDuration={isDownloading ? null : 4000}
+        onClose={handleCloseMessage}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+      >
+        <Alert 
+          onClose={handleCloseMessage} 
+          severity={isDownloading ? "info" : "success"} 
+          sx={{ width: '100%' }}
+          icon={isDownloading ? <CircularProgress size={20} /> : undefined}
+        >
+          {downloadMessage}
+        </Alert>
+      </Snackbar>
     </Box>
   );
 };
