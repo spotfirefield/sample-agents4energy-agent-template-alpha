@@ -205,6 +205,13 @@ const ChatBox = (params: {
             }
           }}
           disabled={isLoading}
+          sx={{
+            position: 'relative', 
+            zIndex: 1400, // Ensure higher than drawer
+            '& .MuiInputBase-root': {
+              backgroundColor: 'white' // Ensure opaque background
+            }
+          }}
         />
         <Button 
           variant="contained" 
@@ -214,6 +221,7 @@ const ChatBox = (params: {
             marginTop: '8px', 
             width: '100%',
             position: 'relative',
+            zIndex: 1400, // Ensure higher than drawer
             overflow: 'hidden',
             ...(isLoading && {
               '&::after': {

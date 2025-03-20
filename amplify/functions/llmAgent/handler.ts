@@ -12,7 +12,7 @@ import { Calculator } from "@langchain/community/tools/calculator";
 
 import { publishResponseStreamChunk } from "../graphql/mutations";
 
-import { userInputTool, listFiles, readFile, updateFile } from "./toolBox";
+import { userInputTool, writeFile, listFiles, readFile, updateFile } from "./toolBox";
 import { Schema } from '../../data/resource';
 
 import { getLangChainChatMessagesStartingWithHumanMessage, getLangChainMessageTextContent, publishMessage, stringifyLimitStringLength } from '../../../utils/langChainUtils';
@@ -72,7 +72,8 @@ export const handler: Schema["invokeAgent"]["functionHandler"] = async (event, c
             userInputTool,
             listFiles,
             readFile,
-            updateFile
+            updateFile,
+            writeFile
         ]
 
         const agent = createReactAgent({

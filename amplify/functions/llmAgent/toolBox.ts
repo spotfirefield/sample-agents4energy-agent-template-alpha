@@ -28,25 +28,25 @@ They should only inform someone besides the user about an action they should tak
     }
 );
 
-// Schema for listing files in tmp/ directory
+// Schema for listing files
 const listFilesSchema = z.object({
-    directory: z.string().optional().describe("Optional subdirectory within tmp/ to list files from"),
+    directory: z.string().optional().describe("Optional subdirectory to list files from"),
 });
 
-// Schema for reading a file from tmp/ directory
+// Schema for reading a file
 const readFileSchema = z.object({
-    filename: z.string().describe("The path to the file within the tmp/ directory, can include subdirectories"),
+    filename: z.string().describe("The path to the file. This can include subdirectories"),
 });
 
-// Schema for writing a file to tmp/ directory
+// Schema for writing a file
 const writeFileSchema = z.object({
-    filename: z.string().describe("The path to the file within the tmp/ directory, can include subdirectories"),
+    filename: z.string().describe("The path to the file. This can include subdirectories"),
     content: z.string().describe("The content to write to the file"),
 });
 
-// Schema for updating a file in tmp/ directory
+// Schema for updating a file
 const updateFileSchema = z.object({
-    filename: z.string().describe("The path to the file within the tmp/ directory, can include subdirectories"),
+    filename: z.string().describe("The path to the file. This can include subdirectories"),
     operation: z.enum(["append", "prepend", "replace"]).describe("The type of update operation: append (add to end), prepend (add to beginning), or replace (find and replace content)"),
     content: z.string().describe("The content to add or use as replacement"),
     searchString: z.string().optional().describe("When using replace operation, the string to search for and replace. Required for replace operation."),
@@ -56,7 +56,7 @@ const updateFileSchema = z.object({
     multiLine: z.boolean().optional().default(false).describe("Whether to enable multiline matching. This is a shorthand to set regexFlags to 'gm'. Only used when isRegex is true."),
 });
 
-// Tool to list files in the tmp/ directory
+// Tool to list files
 export const listFiles = tool(
     async ({ directory = "" }) => {
         try {
@@ -85,7 +85,7 @@ export const listFiles = tool(
     },
     {
         name: "listFiles",
-        description: "Lists all files in the tmp/ directory or a specified subdirectory",
+        description: "Lists all files or a specified subdirectory",
         schema: listFilesSchema,
     }
 );
@@ -98,7 +98,7 @@ export const readFile = tool(
             // by ensuring the final path is within the tmp directory
             const targetPath = path.normalize(filename);
             if (targetPath.startsWith("..")) {
-                return JSON.stringify({ error: "Invalid file path. Cannot access files outside tmp/ directory." });
+                return JSON.stringify({ error: "Invalid file path. Cannot access files outside project root directory." });
             }
             
             const filePath = path.resolve("/tmp", targetPath);
@@ -110,7 +110,7 @@ export const readFile = tool(
     },
     {
         name: "readFile",
-        description: "Reads the content of a file from the tmp/ directory, supports nested directories",
+        description: "Reads the content of a file, supports nested directories",
         schema: readFileSchema,
     }
 );
@@ -131,7 +131,7 @@ export const updateFile = tool(
             // Normalize the path to prevent path traversal attacks
             const targetPath = path.normalize(filename);
             if (targetPath.startsWith("..")) {
-                return JSON.stringify({ error: "Invalid file path. Cannot update files outside tmp/ directory." });
+                return JSON.stringify({ error: "Invalid file path. Cannot update files outside project root directory." });
             }
             
             const tmpDir = path.resolve("/tmp");
@@ -273,7 +273,7 @@ export const writeFile = tool(
             // Normalize the path to prevent path traversal attacks
             const targetPath = path.normalize(filename);
             if (targetPath.startsWith("..")) {
-                return JSON.stringify({ error: "Invalid file path. Cannot write files outside tmp/ directory." });
+                return JSON.stringify({ error: "Invalid file path. Cannot write files outside project root directory." });
             }
             
             const tmpDir = path.resolve("/tmp");
@@ -298,7 +298,7 @@ export const writeFile = tool(
     },
     {
         name: "writeFile",
-        description: "Writes content to a file in the tmp/ directory, supports nested directories",
+        description: "Writes content to a file, supports nested directories",
         schema: writeFileSchema,
     }
 );
