@@ -9,7 +9,7 @@ import { Calculator } from "@langchain/community/tools/calculator";
 
 import { publishResponseStreamChunk } from "../graphql/mutations";
 
-import { userInputTool, writeFile, listFiles, readFile, updateFile, setChatSessionId } from "./toolBox";
+import { userInputTool, writeFile, listFiles, readFile, updateFile, setChatSessionId, textToTableTool } from "./toolBox";
 import { Schema } from '../../data/resource';
 
 import { getLangChainChatMessagesStartingWithHumanMessage, getLangChainMessageTextContent, publishMessage, stringifyLimitStringLength } from '../../../utils/langChainUtils';
@@ -55,7 +55,8 @@ export const handler: Schema["invokeAgent"]["functionHandler"] = async (event, c
             listFiles,
             readFile,
             updateFile,
-            writeFile
+            writeFile,
+            textToTableTool
         ]
 
         const agent = createReactAgent({
@@ -74,6 +75,15 @@ When using the file management tools:
 - To access a directory, include the trailing slash in the path or use the directory name
 - To read a file, use the readFile tool with the complete path including the filename
 - Global files are shared across sessions and are read-only
+- When saving reports to file, use the writeFile tool with html formatting by default
+
+When using the textToTableTool:
+- Provide a regex pattern to select files (e.g., '.*\\.txt$' for all text files)
+- For better performance, start patterns with directory paths when possible (e.g., 'data/.*' instead of '.*data/.*')
+- Define the table columns with a clear description of what to extract
+- The tool uses AI with structured output to reliably extract data based on your column definitions
+- Results are automatically sorted by date if available (chronological order)
+- Use dataToInclude/dataToExclude to prioritize certain types of information
         `//.replace(/^\s+/gm, '') //This trims the whitespace from the beginning of each line
         
         // If the chatSessionMessages ends with a human message, remove it.
@@ -127,6 +137,25 @@ When using the file management tools:
                     chunkIndex = 0 //reset the stream chunk index
                     const streamChunk = streamEvent.data.output as ToolMessage | AIMessageChunk
                     console.log('received on chat model end:\n', stringifyLimitStringLength(streamChunk))
+                    
+                    // Check if this is a table result from textToTableTool and format it properly
+                    if (streamChunk instanceof ToolMessage && streamChunk.name === 'textToTableTool') {
+                        try {
+                            const toolResult = JSON.parse(streamChunk.content as string);
+                            if (toolResult.messageContentType === 'tool_table') {
+                                // Attach table data to the message using additional_kwargs which is supported by LangChain
+                                (streamChunk as any).additional_kwargs = {
+                                    tableData: toolResult.data,
+                                    tableColumns: toolResult.columns,
+                                    matchedFileCount: toolResult.matchedFileCount,
+                                    messageContentType: 'tool_table'
+                                };
+                            }
+                        } catch (error) {
+                            console.error("Error processing textToTableTool result:", error);
+                        }
+                    }
+                    
                     await publishMessage({
                         chatSessionId: event.arguments.chatSessionId,
                         owner: event.identity.sub,
