@@ -2,6 +2,9 @@ import { useTheme } from '@mui/material/styles';
 import { Button, Typography } from '@mui/material';
 import CalculateIcon from '@mui/icons-material/Calculate';
 import BuildIcon from '@mui/icons-material/Build';
+import CheckCircleIcon from '@mui/icons-material/CheckCircle';
+import DescriptionIcon from '@mui/icons-material/Description';
+import UpdateIcon from '@mui/icons-material/Update';
 
 import { Message } from '@/../utils/types';
 
@@ -193,28 +196,127 @@ const ChatMessage = (params: {
                     )
                     break;
                 case 'readFile':
-                    return (
-                        <div style={aiMessageStyle}>
-                            <Typography variant="subtitle2" color="textSecondary" gutterBottom>
-                                File content
-                            </Typography>
-                            <pre>
-                                {JSON.stringify(params.message.content?.text, null, 2)}
-                            </pre>
-                        </div>
-                    )
+                    try {
+                        const fileContent = JSON.parse(params.message.content?.text || '{}').content;
+                        return (
+                            <div style={{
+                                backgroundColor: theme.palette.grey[50],
+                                padding: theme.spacing(2),
+                                borderRadius: theme.shape.borderRadius,
+                                boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
+                                width: '100%'
+                            }}>
+                                <div style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: theme.spacing(1),
+                                    marginBottom: theme.spacing(1.5),
+                                    color: theme.palette.primary.main
+                                }}>
+                                    <DescriptionIcon />
+                                    <Typography variant="subtitle1" fontWeight="medium">
+                                        File Content
+                                    </Typography>
+                                </div>
+                                <div style={{
+                                    backgroundColor: theme.palette.common.white,
+                                    padding: theme.spacing(2),
+                                    borderRadius: theme.shape.borderRadius,
+                                    border: `1px solid ${theme.palette.grey[200]}`,
+                                    overflow: 'auto',
+                                    maxHeight: '300px',
+                                    fontFamily: 'monospace',
+                                    fontSize: '0.9rem',
+                                    whiteSpace: 'pre-wrap',
+                                    width: '100%',
+                                    boxSizing: 'border-box'
+                                }}>
+                                    {typeof fileContent === 'string' ? fileContent : JSON.stringify(fileContent, null, 2)}
+                                </div>
+                            </div>
+                        );
+                    } catch (error) {
+                        return (
+                            <div style={aiMessageStyle}>
+                                <Typography variant="subtitle2" color="error" gutterBottom>
+                                    Error processing file content
+                                </Typography>
+                                <pre>
+                                    {params.message.content?.text}
+                                </pre>
+                            </div>
+                        );
+                    }
+                    break;
+                case 'writeFile':
+                    try {
+                        const fileData = JSON.parse(params.message.content?.text || '{}');
+                        return (
+                            <div style={{
+                                backgroundColor: theme.palette.success.light,
+                                padding: theme.spacing(1.5),
+                                borderRadius: theme.shape.borderRadius,
+                                boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
+                                maxWidth: '80%',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: theme.spacing(1.5)
+                            }}>
+                                <CheckCircleIcon style={{ color: theme.palette.success.dark }} />
+                                <Typography variant="body1" color="textPrimary">
+                                    {fileData.success 
+                                        ? `File saved successfully` 
+                                        : `Error: ${fileData.message || 'Unknown error writing file'}`}
+                                </Typography>
+                            </div>
+                        );
+                    } catch (error) {
+                        return (
+                            <div style={aiMessageStyle}>
+                                <Typography variant="subtitle2" color="error" gutterBottom>
+                                    Error processing file write result
+                                </Typography>
+                                <pre>
+                                    {params.message.content?.text}
+                                </pre>
+                            </div>
+                        );
+                    }
                     break;
                 case 'updateFile':
-                    return (
-                        <div style={aiMessageStyle}>
-                            <Typography variant="subtitle2" color="textSecondary" gutterBottom>
-                                File updated
-                            </Typography>
-                            <pre>
-                                {JSON.stringify(params.message.content?.text, null, 2)}
-                            </pre>
-                        </div>
-                    )
+                    try {
+                        const fileData = JSON.parse(params.message.content?.text || '{}');
+                        return (
+                            <div style={{
+                                backgroundColor: theme.palette.info.light,
+                                padding: theme.spacing(1.5),
+                                borderRadius: theme.shape.borderRadius,
+                                boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
+                                maxWidth: '80%',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: theme.spacing(1.5)
+                            }}>
+                                <UpdateIcon style={{ color: theme.palette.info.dark }} />
+                                <Typography variant="body1" color="textPrimary">
+                                    {fileData.success 
+                                        ? `File updated successfully` 
+                                        : `Error: ${fileData.message || 'Unknown error updating file'}`}
+                                </Typography>
+                            </div>
+                        );
+                    } catch (error) {
+                        return (
+                            <div style={aiMessageStyle}>
+                                <Typography variant="subtitle2" color="error" gutterBottom>
+                                    Error processing file update result
+                                </Typography>
+                                <pre>
+                                    {params.message.content?.text}
+                                </pre>
+                            </div>
+                        );
+                    }
                     break;
 
                 default:
