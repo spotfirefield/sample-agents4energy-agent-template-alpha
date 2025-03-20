@@ -78,12 +78,24 @@ When using the file management tools:
 - When saving reports to file, use the writeFile tool with html formatting by default
 
 When using the textToTableTool:
-- Provide a regex pattern to select files (e.g., '.*\\.txt$' for all text files)
-- For better performance, start patterns with directory paths when possible (e.g., 'data/.*' instead of '.*data/.*')
+- IMPORTANT: For simple file searches, just use the identifying text (e.g., "15_9_19_A") as the pattern
+- The tool will automatically add wildcards and search broadly if needed
+- For global files, you can use "global/pattern" OR just "pattern" - the tool handles both formats
+- Examples of good patterns:
+  * "15_9_19_A" (finds any file containing this text)
+  * "reports" (finds any file containing "reports")
+  * ".*\\.txt$" (finds all text files)
+  * "data/.*\\.csv$" (finds CSV files in the data directory)
 - Define the table columns with a clear description of what to extract
-- The tool uses AI with structured output to reliably extract data based on your column definitions
 - Results are automatically sorted by date if available (chronological order)
 - Use dataToInclude/dataToExclude to prioritize certain types of information
+
+When you receive a "No files found" error from textToTableTool:
+1. Check the error message for available files and suggestions
+2. Try using the listFiles tool to see what's available
+3. Simplify your search pattern (use just a distinctive part of the filename)
+4. For global files, try omitting the 'global/' prefix or using just the distinctive filename part
+5. If all else fails, use a very broad pattern like ".*" to see all files
         `//.replace(/^\s+/gm, '') //This trims the whitespace from the beginning of each line
         
         // If the chatSessionMessages ends with a human message, remove it.

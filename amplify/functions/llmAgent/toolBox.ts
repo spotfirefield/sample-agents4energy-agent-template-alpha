@@ -541,27 +541,50 @@ function normalizeColumnName(name: string): string {
     return name.replace(/\s+/g, '').toLowerCase();
 }
 
-// Text to Table conversion tool
+// Add TypeScript interface for the textToTableTool parameters
+interface TextToTableParams {
+    filePattern: string;
+    tableColumns: Array<{
+        columnName: string;
+        columnDescription: string;
+        columnDataDefinition?: {
+            type: string | string[];
+            [key: string]: any;
+        };
+    }>;
+    includeFilePath?: boolean;
+    maxFiles?: number;
+    dataToInclude?: string;
+    dataToExclude?: string;
+}
+
+// Function to get user-specific prefix
+function getUserPrefix(): string {
+    return getChatSessionPrefix();
+}
+
+// Convert textToTableTool to use the tool function from langchain
 export const textToTableTool = tool(
-    async ({ filePattern, tableColumns, includeFilePath = true, maxFiles = 50, dataToInclude, dataToExclude }) => {
-        console.log("Text to Table Tool Invoked");
+    async (params: TextToTableParams) => {
         try {
+            console.log("textToTableTool params:", JSON.stringify(params, null, 2));
+            
             // Create column name map to restore original column names later
             const columnNameMap = Object.fromEntries(
-                tableColumns
+                params.tableColumns
                     .filter(column => column.columnName !== normalizeColumnName(column.columnName))
                     .map(column => [normalizeColumnName(column.columnName), column.columnName])
             );
 
             // Add default score columns if dataToInclude or dataToExclude are provided
-            let enhancedTableColumns = [...tableColumns];
+            let enhancedTableColumns = [...params.tableColumns];
             
-            if (dataToInclude || dataToExclude) {
+            if (params.dataToInclude || params.dataToExclude) {
                 enhancedTableColumns.unshift({
                     columnName: 'relevanceScore',
                     columnDescription: `
-                        ${dataToExclude ? `If the text contains information related to [${dataToExclude}], give a lower score.` : ''}
-                        ${dataToInclude ? `Give a higher score if text contains information related to [${dataToInclude}].` : ''}
+                        ${params.dataToExclude ? `If the text contains information related to [${params.dataToExclude}], give a lower score.` : ''}
+                        ${params.dataToInclude ? `Give a higher score if text contains information related to [${params.dataToInclude}].` : ''}
                         Score on a scale from 0 to 10, where 10 is the most relevant.
                     `,
                     columnDataDefinition: {
@@ -580,7 +603,7 @@ export const textToTableTool = tool(
                 });
             }
 
-            tableColumns.unshift({
+            params.tableColumns.unshift({
                 columnName: 'date',
                 columnDescription: `The date of the event in YYYY-MM-DD format. Can be null if no date is available.`,
                 columnDataDefinition: {
@@ -588,7 +611,7 @@ export const textToTableTool = tool(
                     format: 'date',
                     pattern: "^(?:\\d{4})-(?:(0[1-9]|1[0-2]))-(?:(0[1-9]|[12]\\d|3[01]))$"
                 }
-            })
+            });
 
             // Build JSON schema for structured output
             const fieldDefinitions: Record<string, any> = {};
@@ -601,7 +624,7 @@ export const textToTableTool = tool(
             }
 
             // Include file path column if requested
-            if (includeFilePath) {
+            if (params.includeFilePath !== false) { // Default to true
                 fieldDefinitions['filePath'] = {
                     type: 'string',
                     description: 'The path of the file that this data was extracted from'
@@ -618,33 +641,97 @@ export const textToTableTool = tool(
 
             console.log('Target JSON schema for row:', JSON.stringify(jsonSchema, null, 2));
 
-            // Get files from session that match the pattern
-            const sessionPrefix = getChatSessionPrefix();
-            const matchingSessionFiles = await findFilesMatchingPattern(sessionPrefix, filePattern);
+            // Search for matching files
+            const matchingFiles: string[] = [];
             
-            // Also check global files
-            const matchingGlobalFiles = await findFilesMatchingPattern(GLOBAL_PREFIX, filePattern);
+            // Correct the pattern if needed
+            let correctedPattern = params.filePattern;
             
-            // Combine files from both sources
-            let matchingFiles = [...matchingSessionFiles, ...matchingGlobalFiles];
-
-            // Limit the number of files
-            if (matchingFiles.length > maxFiles) {
-                console.log(`Found ${matchingFiles.length} matching files, limiting to ${maxFiles}`);
-                matchingFiles = matchingFiles.slice(0, maxFiles);
+            // If pattern starts with 'global/' and basePrefix already contains 'global/',
+            // remove the redundant 'global/' from the pattern
+            if (correctedPattern.startsWith('global/')) {
+                // Keep original for user feedback but use corrected for searching
+                console.log(`Corrected pattern from ${params.filePattern} to ${correctedPattern.replace('global/', '')}`);
+            }
+            
+            // If pattern doesn't have any wildcards, treat it as a contains search
+            if (!correctedPattern.includes('*') && !correctedPattern.includes('?') && 
+                !correctedPattern.includes('[') && !correctedPattern.includes('(') && 
+                !correctedPattern.includes('|')) {
+                correctedPattern = `.*${correctedPattern}.*`;
+                console.log(`Added wildcards to pattern: ${correctedPattern}`);
+            }
+            
+            // Search in user files
+            const userFiles = await findFilesMatchingPattern(
+                getUserPrefix(),
+                correctedPattern
+            );
+            matchingFiles.push(...userFiles);
+            
+            // Search in global files
+            const globalFiles = await findFilesMatchingPattern(
+                GLOBAL_PREFIX,
+                correctedPattern
+            );
+            matchingFiles.push(...globalFiles);
+            
+            console.log(`Found ${matchingFiles.length} matching files`);
+            
+            // Check for no matches and provide helpful feedback
+            if (matchingFiles.length === 0) {
+                // If no files found, return a helpful error message
+                const searchSuggestions = [
+                    "Try a simpler search pattern (e.g., just use a distinctive part of the filename)",
+                    "Check if the files exist using the listFiles tool first",
+                    "For global files, you can omit the 'global/' prefix",
+                    "Try using a broader pattern (e.g., '.*' for all files)"
+                ];
+                
+                let errorMessage: {
+                    error: string;
+                    suggestions: string[];
+                    availableFiles?: {
+                        message: string;
+                        global: string[];
+                        user: string[];
+                    };
+                } = {
+                    error: `No files found matching pattern: ${params.filePattern}`,
+                    suggestions: searchSuggestions
+                };
+                
+                // Try to do a broader search to suggest available files
+                try {
+                    const sampleGlobalFiles = await listAvailableFiles(GLOBAL_PREFIX, 5);
+                    const sampleUserFiles = await listAvailableFiles(getUserPrefix(), 5);
+                    
+                    if (sampleGlobalFiles.length > 0 || sampleUserFiles.length > 0) {
+                        errorMessage.availableFiles = {
+                            message: "Here are some files that are available:",
+                            global: sampleGlobalFiles,
+                            user: sampleUserFiles
+                        };
+                    }
+                } catch (error) {
+                    console.error("Error getting sample files:", error);
+                }
+                
+                return JSON.stringify(errorMessage);
             }
 
-            if (matchingFiles.length === 0) {
-                return JSON.stringify({
-                    error: `No files found matching pattern: ${filePattern}`
-                });
+            // Limit the number of files
+            const maxFiles = params.maxFiles || 50;
+            if (matchingFiles.length > maxFiles) {
+                console.log(`Found ${matchingFiles.length} matching files, limiting to ${maxFiles}`);
+                matchingFiles.splice(maxFiles);
             }
 
             console.log(`Processing ${matchingFiles.length} files`);
 
             // Process each file with concurrency limit
             const tableRows = [];
-            const concurrencyLimit = 5; // Process 5 files at a time
+            const concurrencyLimit = 2; // Process x files at a time
             
             // Process files in batches to avoid hitting limits
             for (let i = 0; i < matchingFiles.length; i += concurrencyLimit) {
@@ -656,7 +743,7 @@ export const textToTableTool = tool(
                         // Extract file path for display
                         const filePath = fileKey.startsWith(GLOBAL_PREFIX) 
                             ? fileKey.replace(GLOBAL_PREFIX, 'global/') 
-                            : fileKey.replace(sessionPrefix, '');
+                            : fileKey.replace(getUserPrefix(), '');
 
                         // Build the message for AI processing
                         const messageText = `
@@ -684,7 +771,7 @@ export const textToTableTool = tool(
                             const structuredData: Record<string, any> = structuredDataResult;
                             
                             // Add file path if requested
-                            if (includeFilePath) {
+                            if (params.includeFilePath !== false) {
                                 structuredData['filePath'] = filePath;
                             }
 
@@ -704,7 +791,7 @@ export const textToTableTool = tool(
                             const errorRow: Record<string, any> = {
                                 error: `Model structured output error: ${error instanceof Error ? error.message : String(error)}`
                             };
-                            if (includeFilePath) {
+                            if (params.includeFilePath !== false) {
                                 errorRow['filePath'] = filePath;
                             }
                             return errorRow;
@@ -713,8 +800,8 @@ export const textToTableTool = tool(
                         console.error(`Error processing file ${fileKey}:`, error);
                         // Add error row
                         const errorRow: Record<string, any> = {};
-                        if (includeFilePath) {
-                            errorRow['filePath'] = fileKey.replace(fileKey.startsWith(GLOBAL_PREFIX) ? GLOBAL_PREFIX : sessionPrefix, '');
+                        if (params.includeFilePath !== false) {
+                            errorRow['filePath'] = fileKey.replace(fileKey.startsWith(GLOBAL_PREFIX) ? GLOBAL_PREFIX : getUserPrefix(), '');
                         }
                         errorRow['error'] = `Failed to process: ${error.message}`;
                         return errorRow;
@@ -743,7 +830,7 @@ export const textToTableTool = tool(
                 } 
                 
                 // If dates are not available or equal, fall back to relevance score if available
-                if (dataToInclude || dataToExclude) {
+                if (params.dataToInclude || params.dataToExclude) {
                     const scoreA = (a['relevanceScore'] as number) || 0;
                     const scoreB = (b['relevanceScore'] as number) || 0;
                     return scoreB - scoreA; // Higher scores first for secondary sorting
@@ -762,7 +849,8 @@ export const textToTableTool = tool(
         } catch (error: any) {
             console.error('Error in textToTableTool:', error);
             return JSON.stringify({
-                error: `Error: ${error.message || error}`
+                error: `Error: ${error.message || error}`,
+                suggestion: "Check the file pattern and try again with a simpler pattern"
             });
         }
     },
@@ -777,6 +865,16 @@ export const textToTableTool = tool(
         - "data/.*" - all files in the data directory
         - "logs/.*\\.log$" - all log files in the logs directory
         - "\\d{4}-\\d{2}-\\d{2}" - files with dates in YYYY-MM-DD format
+        - "15_9_19_A" - files containing "15_9_19_A" anywhere in the path (simplified search)
+        
+        For global files:
+        - Use "global/..." for files in the global directory
+        - You can also just use a pattern like "15_9_19_A" without the "global/" prefix for files in any location
+        
+        IMPORTANT: The pattern is automatically adjusted to improve matching:
+        - If you're looking for files containing a specific string (e.g., "15_9_19_A"), you can just provide that string
+        - The tool will automatically add wildcards if needed (e.g., converting "15_9_19_A" to ".*15_9_19_A.*")
+        - If no files are found with the specific pattern, the tool will attempt a broader search
         
         The file pattern is applied to the relative path (without the session prefix).
         For more efficient searching, start your pattern with a literal directory prefix when possible.
@@ -791,19 +889,65 @@ export const textToTableTool = tool(
     }
 );
 
+// Helper function to list available files for suggestions
+async function listAvailableFiles(prefix: string, limit: number = 10): Promise<string[]> {
+    const s3Client = getS3Client();
+    const bucketName = getBucketName();
+    
+    try {
+        const command = new ListObjectsV2Command({
+            Bucket: bucketName,
+            Prefix: prefix,
+            MaxKeys: 20 // Get a few more than needed to filter
+        });
+        
+        const response = await s3Client.send(command);
+        return (response.Contents || [])
+            .filter(item => {
+                const key = item.Key as string;
+                return !key.endsWith('/') && !key.endsWith('.s3meta');
+            })
+            .map(item => (item.Key as string).replace(prefix, ''))
+            .slice(0, limit);
+    } catch (error) {
+        console.error(`Error listing available files: ${error}`);
+        return [];
+    }
+}
+
 // Function to find files matching a pattern in S3
 async function findFilesMatchingPattern(basePrefix: string, pattern: string): Promise<string[]> {
     const s3Client = getS3Client();
     const bucketName = getBucketName();
     
+    // Fix common pattern mistakes
+    let correctedPattern = pattern;
+    
+    // If pattern starts with 'global/' and basePrefix already contains 'global/',
+    // remove the redundant 'global/' from the pattern
+    if (basePrefix === GLOBAL_PREFIX && pattern.startsWith('global/')) {
+        correctedPattern = pattern.replace('global/', '');
+        console.log(`Corrected pattern from ${pattern} to ${correctedPattern}`);
+    }
+    
+    // If pattern doesn't have any wildcards, treat it as a contains search
+    if (!correctedPattern.includes('*') && !correctedPattern.includes('?') && 
+        !correctedPattern.includes('[') && !correctedPattern.includes('(') && 
+        !correctedPattern.includes('|')) {
+        correctedPattern = `.*${correctedPattern}.*`;
+        console.log(`Added wildcards to pattern: ${correctedPattern}`);
+    }
+    
     // First, try to extract a common prefix from the regex pattern if possible
     let searchPrefix = basePrefix;
     
     // If pattern starts with a literal part before any regex special chars, use it as prefix
-    const prefixMatch = pattern.match(/^([^\\.\*\+\?\|\(\)\[\]\{\}^$]+)/);
+    const prefixMatch = correctedPattern.match(/^([^\\.\*\+\?\|\(\)\[\]\{\}^$]+)/);
     if (prefixMatch && prefixMatch[1]) {
         searchPrefix = path.posix.join(basePrefix, prefixMatch[1]);
     }
+    
+    console.log(`Searching in S3 with prefix: ${searchPrefix}`);
     
     const matchingFiles: string[] = [];
     let continuationToken: string | undefined;
@@ -825,6 +969,52 @@ async function findFilesMatchingPattern(basePrefix: string, pattern: string): Pr
             const command = new ListObjectsV2Command(listParams);
             const response = await s3Client.send(command);
             
+            // Log how many objects were found with this prefix
+            console.log(`Found ${response.Contents?.length || 0} objects with prefix ${searchPrefix}`);
+            
+            // If no files found with the current prefix and we're not using the base prefix,
+            // retry with the base prefix and a more permissive search
+            if ((!response.Contents || response.Contents.length === 0) && searchPrefix !== basePrefix) {
+                console.log(`No files found with prefix ${searchPrefix}, retrying with base prefix ${basePrefix}`);
+                const fallbackCommand = new ListObjectsV2Command({
+                    Bucket: bucketName,
+                    Prefix: basePrefix,
+                    MaxKeys: 1000
+                });
+                
+                const fallbackResponse = await s3Client.send(fallbackCommand);
+                
+                // Extract matching files from fallback response
+                const fallbackFiles = (fallbackResponse.Contents || [])
+                    .filter(item => {
+                        const key = item.Key as string;
+                        // Filter out directory markers and metadata files
+                        if (key.endsWith('/') || key.endsWith('.s3meta')) {
+                            return false;
+                        }
+                        
+                        // Remove the base prefix for matching and apply the pattern
+                        const relativePath = key.replace(basePrefix, '');
+                        const isMatch = fileMatchesPattern(relativePath, correctedPattern);
+                        
+                        // Log pattern matching results for debugging
+                        if (isMatch) {
+                            console.log(`Match found: ${relativePath} matches pattern ${correctedPattern}`);
+                        }
+                        
+                        return isMatch;
+                    })
+                    .map(item => item.Key as string);
+                
+                matchingFiles.push(...fallbackFiles);
+                
+                // If we found files with the fallback approach, return them
+                if (fallbackFiles.length > 0) {
+                    console.log(`Found ${fallbackFiles.length} files with fallback search`);
+                    return matchingFiles;
+                }
+            }
+            
             // Extract matching files from current batch
             const currentBatchFiles = (response.Contents || [])
                 .filter(item => {
@@ -836,7 +1026,14 @@ async function findFilesMatchingPattern(basePrefix: string, pattern: string): Pr
                     
                     // Remove the base prefix for matching
                     const relativePath = key.replace(basePrefix, '');
-                    return fileMatchesPattern(relativePath, pattern);
+                    const isMatch = fileMatchesPattern(relativePath, correctedPattern);
+                    
+                    // Log pattern matching results for debugging
+                    if (isMatch) {
+                        console.log(`Match found: ${relativePath} matches pattern ${correctedPattern}`);
+                    }
+                    
+                    return isMatch;
                 })
                 .map(item => item.Key as string);
                 
@@ -851,6 +1048,35 @@ async function findFilesMatchingPattern(basePrefix: string, pattern: string): Pr
             throw error;
         }
     } while (continuationToken);
+    
+    // If no files found, log available files for debugging
+    if (matchingFiles.length === 0) {
+        try {
+            // List a sample of available files for debugging
+            const sampleCommand = new ListObjectsV2Command({
+                Bucket: bucketName,
+                Prefix: basePrefix,
+                MaxKeys: 20 // Just get a few for sample
+            });
+            
+            const sampleResponse = await s3Client.send(sampleCommand);
+            const sampleFiles = (sampleResponse.Contents || [])
+                .filter(item => {
+                    const key = item.Key as string;
+                    return !key.endsWith('/') && !key.endsWith('.s3meta');
+                })
+                .map(item => (item.Key as string).replace(basePrefix, ''));
+                
+            if (sampleFiles.length > 0) {
+                console.log(`No files matched pattern "${correctedPattern}", but here are some available files:`);
+                sampleFiles.forEach(file => console.log(`- ${file}`));
+            } else {
+                console.log(`No files found in directory ${basePrefix}`);
+            }
+        } catch (error) {
+            console.error(`Error listing sample files: ${error}`);
+        }
+    }
     
     return matchingFiles;
 }
