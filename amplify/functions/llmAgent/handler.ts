@@ -19,7 +19,10 @@ import { getLangChainChatMessagesStartingWithHumanMessage, getLangChainMessageTe
 import path from "path";
 import fs from "fs";
 import { S3Client, PutObjectCommand, ListObjectsV2Command, GetObjectCommand } from "@aws-sdk/client-s3";
+import { EventEmitter } from "events";
 
+// Increase the default max listeners to prevent warnings
+EventEmitter.defaultMaxListeners = 20;
 
 export const handler: Schema["invokeAgent"]["functionHandler"] = async (event, context) => {
     console.log('event:\n', JSON.stringify(event, null, 2))
