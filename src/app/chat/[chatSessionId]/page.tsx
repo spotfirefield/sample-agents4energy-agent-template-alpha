@@ -3,11 +3,13 @@ import React, { useEffect, useState } from 'react';
 
 import { generateClient } from "aws-amplify/data";
 import { type Schema } from "@/../amplify/data/resource";
-import { Box, Typography, Paper, Divider } from '@mui/material';
+import { Box, Typography, Paper, Divider, IconButton, Tooltip } from '@mui/material';
+import FolderIcon from '@mui/icons-material/Folder';
 
 import ChatBox from "@/components/ChatBox"
 import EditableTextBox from '@/components/EditableTextBox';
 import { withAuth } from '@/components/WithAuth';
+import FileDrawer from '@/components/FileDrawer';
 
 const amplifyClient = generateClient<Schema>();
 
@@ -17,6 +19,11 @@ function Page({
     params: Promise<{ chatSessionId: string }>
 }) {
     const [activeChatSession, setActiveChatSession] = useState<Schema["ChatSession"]["createType"]>();
+    const [fileDrawerOpen, setFileDrawerOpen] = useState(false);
+    
+    const toggleFileDrawer = () => {
+        setFileDrawerOpen(!fileDrawerOpen);
+    };
 
     const setActiveChatSessionAndUpload = async (newChatSession: Schema["ChatSession"]["createType"]) => {
         const { data: updatedChatSession } = await amplifyClient.models.ChatSession.update({
@@ -79,7 +86,10 @@ function Page({
                 <Box sx={{
                     p: 3,
                     backgroundColor: '#fff',
-                    borderBottom: '1px solid rgba(0,0,0,0.08)'
+                    borderBottom: '1px solid rgba(0,0,0,0.08)',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center'
                 }}>
                     <EditableTextBox
                         object={activeChatSession}
@@ -87,6 +97,15 @@ function Page({
                         onUpdate={setActiveChatSessionAndUpload}
                         typographyVariant="h3"
                     />
+                    <Tooltip title="View Files">
+                        <IconButton 
+                            onClick={toggleFileDrawer}
+                            color="primary"
+                            size="large"
+                        >
+                            <FolderIcon />
+                        </IconButton>
+                    </Tooltip>
                 </Box>
 
                 <Divider />
@@ -104,6 +123,13 @@ function Page({
                     />
                 </Box>
             </Paper>
+            
+            {/* File Drawer */}
+            <FileDrawer 
+                open={fileDrawerOpen} 
+                onClose={() => setFileDrawerOpen(false)} 
+                chatSessionId={activeChatSession.id} 
+            />
         </Box>
     );
 }
