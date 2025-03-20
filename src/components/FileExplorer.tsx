@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { list, getUrl } from 'aws-amplify/storage';
 import { 
   Box, 
@@ -12,7 +12,8 @@ import {
   Collapse,
   IconButton,
   Breadcrumbs,
-  Link as MuiLink
+  Link as MuiLink,
+  Badge
 } from '@mui/material';
 import FolderIcon from '@mui/icons-material/Folder';
 import FolderOpenIcon from '@mui/icons-material/FolderOpen';
@@ -23,6 +24,7 @@ import RefreshIcon from '@mui/icons-material/Refresh';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import { styled } from '@mui/material/styles';
 import FilePreview from './FilePreview';
+import { useFileSystem } from '@/contexts/FileSystemContext';
 
 // File extensions to icon mapping
 const fileIcons: Record<string, React.ReactNode> = {
@@ -54,6 +56,7 @@ interface FileItem {
   name: string;
   url?: string;
   children?: FileItem[];
+  lastRefreshTime?: number; // Make it optional for backward compatibility
 }
 
 interface FileExplorerProps {
@@ -80,12 +83,22 @@ const FileExplorer: React.FC<FileExplorerProps> = ({ chatSessionId, onFileSelect
   // File preview state
   const [previewOpen, setPreviewOpen] = useState(false);
   const [selectedFile, setSelectedFile] = useState<FileItem | null>(null);
+
+  // Use the file system context
+  const { lastRefreshTime, isRefreshing } = useFileSystem();
+  
+  // Ref to track if a refresh is in progress
+  const loadingRef = useRef(false);
   
   // Base path for the chat session artifacts
   const basePath = `chatSessionArtifacts/sessionId=${chatSessionId}/`;
 
   // Function to load files and folders
-  const loadFiles = async (path: string = '') => {
+  const loadFiles = useCallback(async (path: string = '') => {
+    // Prevent multiple concurrent loads
+    if (loadingRef.current) return;
+    
+    loadingRef.current = true;
     setLoading(true);
     setError(null);
     
@@ -110,8 +123,11 @@ const FileExplorer: React.FC<FileExplorerProps> = ({ chatSessionId, onFileSelect
         let url = '';
         if (!isFolder) {
           try {
+            // Get the file URL without modifying it
             const fileUrl = await getUrl({ path: itemPath });
             url = fileUrl.url.toString();
+            // Don't add cache busting params to the URL - this causes 403 errors
+            // We'll handle cache busting in the component that uses the URL
           } catch (e) {
             console.error(`Error getting URL for ${itemPath}:`, e);
           }
@@ -123,6 +139,7 @@ const FileExplorer: React.FC<FileExplorerProps> = ({ chatSessionId, onFileSelect
           isFolder,
           name,
           url,
+          lastRefreshTime: Date.now(), // Store the current timestamp to help with cache busting
         });
       }
       
@@ -153,13 +170,21 @@ const FileExplorer: React.FC<FileExplorerProps> = ({ chatSessionId, onFileSelect
       setError('Failed to load files. Please try again later.');
     } finally {
       setLoading(false);
+      loadingRef.current = false;
     }
-  };
+  }, [basePath]);
   
   // Load files when component mounts or when current path changes
   useEffect(() => {
     loadFiles(currentPath);
-  }, [currentPath, chatSessionId]);
+  }, [currentPath, chatSessionId, loadFiles]);
+
+  // Reload files when lastRefreshTime changes
+  useEffect(() => {
+    if (lastRefreshTime > 0) {
+      loadFiles(currentPath);
+    }
+  }, [lastRefreshTime, currentPath, loadFiles]);
   
   // Handle folder click
   const handleFolderClick = (folder: FileItem) => {
@@ -275,32 +300,44 @@ const FileExplorer: React.FC<FileExplorerProps> = ({ chatSessionId, onFileSelect
           </Breadcrumbs>
         </Box>
         
-        <IconButton size="small" onClick={handleRefresh} sx={{ ml: 1 }}>
-          <RefreshIcon fontSize="small" />
+        <IconButton 
+          size="small" 
+          onClick={handleRefresh} 
+          sx={{ ml: 1 }}
+          color={isRefreshing ? "secondary" : "default"}
+        >
+          <Badge color="error" variant="dot" invisible={!isRefreshing}>
+            <RefreshIcon fontSize="small" />
+          </Badge>
         </IconButton>
       </Box>
       
-      {/* File list */}
-      <List dense>
-        {fileStructure.map((item) => (
-          <ListItem key={item.key} disablePadding>
-            <StyledListItem
-              onClick={() => item.isFolder 
-                ? handleFolderClick(item) 
-                : handleFileClick(item)
-              }
-            >
-              <ListItemIcon sx={{ minWidth: 36 }}>
-                {item.isFolder ? <FolderIcon color="primary" /> : getFileIcon(item.name)}
-              </ListItemIcon>
-              <ListItemText
-                primary={item.name}
-                primaryTypographyProps={{ noWrap: true }}
-              />
-            </StyledListItem>
-          </ListItem>
-        ))}
-      </List>
+      {/* File list with slight animation when refreshing */}
+      <Box sx={{ 
+        opacity: isRefreshing ? 0.7 : 1,
+        transition: 'opacity 0.3s ease',
+      }}>
+        <List dense>
+          {fileStructure.map((item) => (
+            <ListItem key={item.key} disablePadding>
+              <StyledListItem
+                onClick={() => item.isFolder 
+                  ? handleFolderClick(item) 
+                  : handleFileClick(item)
+                }
+              >
+                <ListItemIcon sx={{ minWidth: 36 }}>
+                  {item.isFolder ? <FolderIcon color="primary" /> : getFileIcon(item.name)}
+                </ListItemIcon>
+                <ListItemText
+                  primary={item.name}
+                  primaryTypographyProps={{ noWrap: true }}
+                />
+              </StyledListItem>
+            </ListItem>
+          ))}
+        </List>
+      </Box>
       
       {/* Loading indicator for refreshes */}
       {loading && fileStructure.length > 0 && (

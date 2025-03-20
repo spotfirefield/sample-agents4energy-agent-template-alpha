@@ -5,8 +5,10 @@ import BuildIcon from '@mui/icons-material/Build';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import DescriptionIcon from '@mui/icons-material/Description';
 import UpdateIcon from '@mui/icons-material/Update';
+import { useEffect, useRef } from 'react';
 
 import { Message } from '@/../utils/types';
+import { useFileSystem } from '@/contexts/FileSystemContext';
 
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -19,6 +21,38 @@ const ChatMessage = (params: {
     //Render either ai or human messages based on the params.message.role
 
     const theme = useTheme();
+    const { refreshFiles } = useFileSystem();
+    
+    // Use a ref to track which messages we've already processed
+    // to prevent multiple refreshes for the same message
+    const processedMessageRef = useRef<{[key: string]: boolean}>({});
+
+    // Effect to handle file operation updates
+    useEffect(() => {
+        // Skip if we've already processed this message
+        const messageId = params.message.id;
+        if (!messageId || processedMessageRef.current[messageId]) {
+            return;
+        }
+        
+        if (params.message.role === 'tool' && 
+            (params.message.toolName === 'writeFile' || 
+             params.message.toolName === 'updateFile')) {
+            try {
+                const fileData = JSON.parse(params.message.content?.text || '{}');
+                if (fileData.success) {
+                    // Mark this message as processed
+                    processedMessageRef.current[messageId] = true;
+                    // Refresh file list when operations are successful
+                    refreshFiles();
+                }
+            } catch (error) {
+                console.error('Error parsing file operation result:', error);
+                // Even on error, mark as processed to prevent infinite retries
+                processedMessageRef.current[messageId] = true;
+            }
+        }
+    }, [params.message, refreshFiles]);
 
     const humanMessageStyle = {
         backgroundColor: theme.palette.primary.light,
