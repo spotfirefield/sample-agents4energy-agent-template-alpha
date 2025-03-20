@@ -180,6 +180,42 @@ const ChatMessage = (params: {
                         );
                     }
                     break;
+                case 'listFiles':
+                    return (
+                        <div style={aiMessageStyle}>
+                            <Typography variant="subtitle2" color="textSecondary" gutterBottom>
+                                List of files in the tmp/ directory
+                            </Typography>
+                            <pre>
+                                {JSON.stringify(params.message.content?.text, null, 2)}
+                            </pre>
+                        </div>
+                    )
+                    break;
+                case 'readFile':
+                    return (
+                        <div style={aiMessageStyle}>
+                            <Typography variant="subtitle2" color="textSecondary" gutterBottom>
+                                File content
+                            </Typography>
+                            <pre>
+                                {JSON.stringify(params.message.content?.text, null, 2)}
+                            </pre>
+                        </div>
+                    )
+                    break;
+                case 'updateFile':
+                    return (
+                        <div style={aiMessageStyle}>
+                            <Typography variant="subtitle2" color="textSecondary" gutterBottom>
+                                File updated
+                            </Typography>
+                            <pre>
+                                {JSON.stringify(params.message.content?.text, null, 2)}
+                            </pre>
+                        </div>
+                    )
+                    break;
 
                 default:
                     return <>
