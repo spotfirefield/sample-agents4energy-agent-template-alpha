@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Box, TextField, Button, List, ListItem, Typography, CircularProgress } from '@mui/material';
 
 
@@ -22,6 +22,12 @@ const ChatBox = (params: {
   const [streamChunkMessage, setStreamChunkMessage] = useState<Message>();
   const [userInput, setUserInput] = useState<string>('');
   const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [isLoadingMore, setIsLoadingMore] = useState<boolean>(false);
+  const [hasMoreMessages, setHasMoreMessages] = useState<boolean>(true);
+  const [page, setPage] = useState<number>(1);
+  const messagesPerPage = 20;
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
 
   //Subscribe to the chat messages for the garden
   useEffect(() => {
@@ -33,19 +39,14 @@ const ChatBox = (params: {
         }
       }).subscribe({
         next: ({ items }) => {
-          // console.log('Received new messages: ', items)
-          //If any of the items have the isResposeComplete flag set to true, set isLoading to false
-          // const isResponseComplete = items.some((message) => message.responseComplete)
-          // if (isResponseComplete) setIsLoading(false)
           setMessages((prevMessages) => {
-            const sortedMessages = combineAndSortMessages(prevMessages, items)
+            // Only take the most recent messagesPerPage messages
+            const recentMessages = items.slice(-messagesPerPage);
+            const sortedMessages = combineAndSortMessages(prevMessages, recentMessages)
             if (sortedMessages[sortedMessages.length - 1] && sortedMessages[sortedMessages.length - 1].responseComplete) {
               setIsLoading(false)
             }
-            // else {
-            //   setIsLoading(true)
-            // }
-            console.log('sortedMessages: ', sortedMessages)
+            setHasMoreMessages(items.length > messagesPerPage);
             return sortedMessages
           })
           setStreamChunkMessage(undefined)
@@ -56,12 +57,50 @@ const ChatBox = (params: {
       return () => {
         messagesSub.unsubscribe();
       };
-
     }
 
     messageSubscriptionHandler()
-
   }, [params.chatSessionId])
+
+  const loadMoreMessages = useCallback(async () => {
+    if (isLoadingMore || !hasMoreMessages) return;
+    
+    setIsLoadingMore(true);
+    const nextPage = page + 1;
+    
+    try {
+      const result = await amplifyClient.models.ChatMessage.list({
+        filter: {
+          chatSessionId: { eq: params.chatSessionId }
+        }
+      });
+      
+      if (result.data) {
+        // Get the next page of messages
+        const startIndex = (nextPage - 1) * messagesPerPage;
+        const endIndex = startIndex + messagesPerPage;
+        const newMessages = result.data.slice(startIndex, endIndex);
+        
+        setMessages(prevMessages => {
+          const combinedMessages = [...prevMessages, ...newMessages];
+          return combineAndSortMessages(prevMessages, combinedMessages);
+        });
+        setHasMoreMessages(endIndex < result.data.length);
+        setPage(nextPage);
+      }
+    } catch (error) {
+      console.error('Error loading more messages:', error);
+    } finally {
+      setIsLoadingMore(false);
+    }
+  }, [page, hasMoreMessages, isLoadingMore, params.chatSessionId]);
+
+  const handleScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
+    const container = e.currentTarget;
+    if (container.scrollTop < 100 && hasMoreMessages && !isLoadingMore) {
+      loadMoreMessages();
+    }
+  }, [hasMoreMessages, isLoadingMore, loadMoreMessages]);
 
   //Subscribe to the response stream chunks for the garden
   useEffect(() => {
@@ -154,14 +193,23 @@ const ChatBox = (params: {
       flexDirection: 'column',
       overflowY: 'hidden'
     }}>
-      <Box sx={{
-        flex: 1,
-        overflowY: 'auto',
-        flexDirection: 'column-reverse',
-        display: 'flex',
-        mb: 2,
-        position: 'relative'
-      }}>
+      <Box 
+        ref={messagesContainerRef}
+        onScroll={handleScroll}
+        sx={{
+          flex: 1,
+          overflowY: 'auto',
+          flexDirection: 'column-reverse',
+          display: 'flex',
+          mb: 2,
+          position: 'relative'
+        }}
+      >
+        {isLoadingMore && (
+          <Box sx={{ display: 'flex', justifyContent: 'center', p: 2 }}>
+            <CircularProgress size={24} />
+          </Box>
+        )}
         <List>
           {[
             ...messages,
@@ -173,6 +221,7 @@ const ChatBox = (params: {
               />
             </ListItem>
           ))}
+          <div ref={messagesEndRef} />
         </List>
       </Box>
       {messages.length === 0 &&

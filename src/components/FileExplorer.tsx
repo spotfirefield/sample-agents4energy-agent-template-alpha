@@ -11,7 +11,6 @@ import {
   ListItemIcon, 
   ListItemText, 
   CircularProgress,
-  Collapse,
   IconButton,
   Breadcrumbs,
   Link as MuiLink,
@@ -21,10 +20,7 @@ import {
   Alert
 } from '@mui/material';
 import FolderIcon from '@mui/icons-material/Folder';
-import FolderOpenIcon from '@mui/icons-material/FolderOpen';
 import InsertDriveFileIcon from '@mui/icons-material/InsertDriveFile';
-import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
-import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import DownloadIcon from '@mui/icons-material/Download';
@@ -71,20 +67,20 @@ interface FileExplorerProps {
   onFileSelect?: (file: FileItem) => void;
 }
 
-const StyledListItem = styled(ListItemButton)(({ theme }) => ({
+const StyledListItem = styled(ListItemButton)({
   borderRadius: 8,
   '&:hover': {
     backgroundColor: 'rgba(0, 0, 0, 0.04)',
   },
   marginBottom: 4,
   paddingRight: 48,
-}));
+});
 
 const FileExplorer: React.FC<FileExplorerProps> = ({ chatSessionId, onFileSelect }) => {
-  const [loading, setLoading] = useState(true);
+  const { lastRefreshTime, isRefreshing } = useFileSystem();
+  const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [fileStructure, setFileStructure] = useState<FileItem[]>([]);
-  const [expandedFolders, setExpandedFolders] = useState<Record<string, boolean>>({});
   const [currentPath, setCurrentPath] = useState<string>('');
   const [breadcrumbs, setBreadcrumbs] = useState<{name: string, path: string}[]>([]);
   
@@ -96,9 +92,6 @@ const FileExplorer: React.FC<FileExplorerProps> = ({ chatSessionId, onFileSelect
   const [isDownloading, setIsDownloading] = useState(false);
   const [downloadMessage, setDownloadMessage] = useState('');
   const [showDownloadMessage, setShowDownloadMessage] = useState(false);
-
-  // Use the file system context
-  const { lastRefreshTime, isRefreshing } = useFileSystem();
   
   // Ref to track if a refresh is in progress
   const loadingRef = useRef(false);
@@ -112,7 +105,7 @@ const FileExplorer: React.FC<FileExplorerProps> = ({ chatSessionId, onFileSelect
     if (loadingRef.current && !forceRefresh) return;
     
     loadingRef.current = true;
-    setLoading(true);
+    setIsLoading(true);
     setError(null);
     
     try {
@@ -182,7 +175,7 @@ const FileExplorer: React.FC<FileExplorerProps> = ({ chatSessionId, onFileSelect
       console.error('Error loading files:', err);
       setError('Failed to load files. Please try again later.');
     } finally {
-      setLoading(false);
+      setIsLoading(false);
       loadingRef.current = false;
     }
   }, [basePath]);
@@ -399,7 +392,7 @@ const FileExplorer: React.FC<FileExplorerProps> = ({ chatSessionId, onFileSelect
     setShowDownloadMessage(false);
   };
   
-  if (loading && fileStructure.length === 0) {
+  if (isLoading && fileStructure.length === 0) {
     return (
       <Box display="flex" justifyContent="center" alignItems="center" height="100%">
         <CircularProgress />
@@ -418,7 +411,7 @@ const FileExplorer: React.FC<FileExplorerProps> = ({ chatSessionId, onFileSelect
     );
   }
   
-  if (fileStructure.length === 0 && !loading) {
+  if (fileStructure.length === 0 && !isLoading) {
     return (
       <Box p={2}>
         <Typography variant="body2" color="textSecondary">
@@ -541,7 +534,7 @@ const FileExplorer: React.FC<FileExplorerProps> = ({ chatSessionId, onFileSelect
       </Box>
       
       {/* Loading indicator for refreshes */}
-      {loading && fileStructure.length > 0 && (
+      {isLoading && fileStructure.length > 0 && (
         <Box display="flex" justifyContent="center" p={1}>
           <CircularProgress size={24} />
         </Box>

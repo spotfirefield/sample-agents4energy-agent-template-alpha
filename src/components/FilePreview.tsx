@@ -1,22 +1,20 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
-  Box, 
+  Dialog, 
+  DialogTitle, 
+  DialogContent, 
+  DialogActions, 
+  Button, 
   Typography, 
-  Paper, 
+  Box, 
   CircularProgress,
-  Button,
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogTitle,
-  IconButton
+  IconButton,
+  Paper
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
-import DownloadIcon from '@mui/icons-material/Download';
-import ImageIcon from '@mui/icons-material/Image';
-import TextSnippetIcon from '@mui/icons-material/TextSnippet';
-import InsertDriveFileIcon from '@mui/icons-material/InsertDriveFile';
 import DeleteIcon from '@mui/icons-material/Delete';
+import DownloadIcon from '@mui/icons-material/Download';
+import Image from 'next/image';
 import { useFileSystem } from '@/contexts/FileSystemContext';
 
 // File type detection helpers
@@ -46,17 +44,11 @@ const FilePreview: React.FC<FilePreviewProps> = ({ open, onClose, fileName, file
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   
-  // Use a ref to track the last URL fetched to avoid duplicate fetches
-  const lastFetchedUrlRef = useRef<string>('');
-  
   // Use the file system context to detect changes
   const { lastRefreshTime } = useFileSystem();
 
   // Fetch text content for text files
   const fetchTextContent = async (url: string) => {
-    // Don't refetch the same URL
-    if (lastFetchedUrlRef.current === url) return;
-    
     setLoading(true);
     setError(null);
     
@@ -79,7 +71,6 @@ const FilePreview: React.FC<FilePreviewProps> = ({ open, onClose, fileName, file
       
       const text = await response.text();
       setTextContent(text);
-      lastFetchedUrlRef.current = url;
     } catch (err) {
       console.error('Error fetching text file:', err);
       setError('Failed to load file content.');
@@ -98,8 +89,6 @@ const FilePreview: React.FC<FilePreviewProps> = ({ open, onClose, fileName, file
   // Reload content when file system updates are detected
   useEffect(() => {
     if (open && fileUrl && isTextFile(fileName) && lastRefreshTime > 0) {
-      // Force a reload by clearing the last fetched URL
-      lastFetchedUrlRef.current = '';
       fetchTextContent(fileUrl);
     }
   }, [lastRefreshTime, open, fileUrl, fileName]);
@@ -144,24 +133,15 @@ const FilePreview: React.FC<FilePreviewProps> = ({ open, onClose, fileName, file
     
     if (isImageFile(fileName)) {
       return (
-        <Box 
-          display="flex" 
-          justifyContent="center" 
-          alignItems="center" 
-          height="100%"
-          overflow="auto"
-          p={2}
-        >
-          <img 
-            src={getCacheBustedUrl(fileUrl)} 
-            alt={fileName} 
-            style={{ 
-              maxWidth: '100%', 
-              maxHeight: '80vh',
-              objectFit: 'contain' 
-            }} 
+        <div className="relative w-full h-full">
+          <Image
+            src={getCacheBustedUrl(fileUrl)}
+            alt="File preview"
+            fill
+            className="object-contain"
+            priority
           />
-        </Box>
+        </div>
       );
     }
     
