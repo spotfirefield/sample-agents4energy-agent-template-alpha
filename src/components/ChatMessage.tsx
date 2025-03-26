@@ -47,8 +47,7 @@ const ChatMessage = (params: {
                     // Refresh file list when operations are successful
                     refreshFiles();
                 }
-            } catch (error) {
-                console.error('Error parsing file operation result:', error);
+            } catch {
                 // Even on error, mark as processed to prevent infinite retries
                 processedMessageRef.current[messageId] = true;
             }
@@ -204,7 +203,7 @@ const ChatMessage = (params: {
                                 </Button>
                             </div>
                         );
-                    } catch (error) {
+                    } catch {
                         return (
                             <div style={aiMessageStyle}>
                                 <Typography variant="subtitle2" color="error" gutterBottom>
@@ -212,7 +211,6 @@ const ChatMessage = (params: {
                                 </Typography>
                                 <div>
                                     {params.message.content?.text}
-                                    {String(error)}
                                 </div>
                             </div>
                         );
@@ -309,7 +307,7 @@ const ChatMessage = (params: {
                                 )}
                             </div>
                         );
-                    } catch (error) {
+                    } catch {
                         return (
                             <div style={aiMessageStyle}>
                                 <Typography variant="subtitle2" color="textSecondary" gutterBottom>
@@ -362,7 +360,7 @@ const ChatMessage = (params: {
                                 </div>
                             </div>
                         );
-                    } catch (error) {
+                    } catch {
                         return (
                             <div style={aiMessageStyle}>
                                 <Typography variant="subtitle2" color="error" gutterBottom>
@@ -397,7 +395,7 @@ const ChatMessage = (params: {
                                 </Typography>
                             </div>
                         );
-                    } catch (error) {
+                    } catch {
                         return (
                             <div style={aiMessageStyle}>
                                 <Typography variant="subtitle2" color="error" gutterBottom>
@@ -432,7 +430,7 @@ const ChatMessage = (params: {
                                 </Typography>
                             </div>
                         );
-                    } catch (error) {
+                    } catch {
                         return (
                             <div style={aiMessageStyle}>
                                 <Typography variant="subtitle2" color="error" gutterBottom>
@@ -504,7 +502,7 @@ const ChatMessage = (params: {
                                                     </tr>
                                                 </thead>
                                                 <tbody>
-                                                    {tableData.data.map((row: any, rowIndex: number) => {
+                                                    {tableData.data.map((row: Record<string, string | undefined>, rowIndex: number) => {
                                                         const hasFilePath = !!row.filePath;
                                                         const rowBgColor = rowIndex % 2 === 0 ? theme.palette.common.white : theme.palette.grey[50];
                                                         
@@ -523,7 +521,7 @@ const ChatMessage = (params: {
                                                                 transition: 'background-color 0.2s ease'
                                                             }} 
                                                             onClick={() => {
-                                                                if (hasFilePath) {
+                                                                if (hasFilePath && row.filePath) {
                                                                     // Navigate to the files page with the s3Key
                                                                     const encodedPath = row.filePath.split('/').map((segment: string) => encodeURIComponent(segment)).join('/');
                                                                     window.open(`/files/${encodedPath}`, '_blank');
@@ -603,7 +601,7 @@ const ChatMessage = (params: {
                                 )}
                             </div>
                         );
-                    } catch (error) {
+                    } catch {
                         return (
                             <div style={aiMessageStyle}>
                                 <Typography variant="subtitle2" color="error" gutterBottom>

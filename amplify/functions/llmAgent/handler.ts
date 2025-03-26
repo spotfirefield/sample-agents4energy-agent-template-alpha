@@ -70,6 +70,8 @@ If you don't have the access to the information you need, make a reasonable gues
 Use markdown formatting for your responses (like **bold**, *italic*, ## headings, etc.), but DO NOT wrap your response in markdown code blocks.
 Today's date is ${new Date().toLocaleDateString()}.
 
+Create intermediate files to store your thoughts and work. Use the writeFile tool to create these files. Store them in the 'intermediateFiles' directory.
+
 When using the file management tools:
 - The listFiles tool returns separate 'directories' and 'files' fields to clearly distinguish between them
 - To access a directory, include the trailing slash in the path or use the directory name

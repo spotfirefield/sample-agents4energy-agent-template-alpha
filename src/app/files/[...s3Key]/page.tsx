@@ -1,24 +1,37 @@
 "use client"
 import React, { useState, useEffect } from 'react';
-
+import Image from 'next/image';
 import { getUrl } from 'aws-amplify/storage';
-
-type PageParams = {
-  s3Key: string[];
-};
 
 type FileType = 'image' | 'pdf' | 'video' | 'audio' | 'text' | 'xml' | 'other';
 
-export default function Page({ params }: { params: PageParams | Promise<PageParams> }) {
-  // Unwrap params with React.use() if it's a Promise
-  const unwrappedParams: PageParams = params instanceof Promise ? React.use(params) : params;
-  
+interface PageProps {
+  params: Promise<{
+    s3Key: string[];
+  }>;
+}
+
+export default function FilePage({ params }: PageProps) {
+  const [s3Key, setS3Key] = useState<string>('');
   const [selectedFileUrl, setSelectedFileUrl] = useState<URL>();
   const [fileType, setFileType] = useState<FileType>('other');
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [fileName, setFileName] = useState<string>('');
   const [formattedXml, setFormattedXml] = useState<string | null>(null);
+  const [textContent, setTextContent] = useState<string | null>(null);
+  const [textFetchError, setTextFetchError] = useState<boolean>(false);
+
+  useEffect(() => {
+    // Handle the Promise params
+    params.then((resolvedParams) => {
+      setS3Key(resolvedParams.s3Key.join('/'));
+    }).catch((error) => {
+      console.error('Error resolving params:', error);
+      setError('Failed to load file parameters');
+      setLoading(false);
+    });
+  }, [params]);
 
   const determineFileType = (filePath: string): FileType => {
     const extension = filePath.split('.').pop()?.toLowerCase() || '';
@@ -47,7 +60,7 @@ export default function Page({ params }: { params: PageParams | Promise<PagePara
   const formatXml = (xml: string): string => {
     try {
       // Remove whitespace between tags
-      let formatted = xml.replace(/>\s*</g, '><');
+      const formatted = xml.replace(/>\s*</g, '><');
       
       // Add newlines and indentation
       let indent = '';
@@ -103,10 +116,12 @@ export default function Page({ params }: { params: PageParams | Promise<PagePara
   };
 
   useEffect(() => {
+    if (!s3Key) return;
+    
     setLoading(true);
     setError(null);
     
-    const s3KeyDecoded = unwrappedParams.s3Key.map((item: string) => decodeURIComponent(item)).join('/');
+    const s3KeyDecoded = s3Key.split('/').map((item: string) => decodeURIComponent(item)).join('/');
     console.log('s3 Key: ', s3KeyDecoded);
     
     // Determine file type from path
@@ -123,11 +138,7 @@ export default function Page({ params }: { params: PageParams | Promise<PagePara
       setError('Failed to load file. Please try again later.');
       setLoading(false);
     });
-  }, [unwrappedParams.s3Key]);
-
-  // Function to fetch and display text content directly instead of using iframe
-  const [textContent, setTextContent] = useState<string | null>(null);
-  const [textFetchError, setTextFetchError] = useState<boolean>(false);
+  }, [s3Key]);
 
   useEffect(() => {
     if ((fileType === 'text' || fileType === 'xml') && selectedFileUrl) {
@@ -169,11 +180,13 @@ export default function Page({ params }: { params: PageParams | Promise<PagePara
     switch (fileType) {
       case 'image':
         return (
-          <div className="flex justify-center items-center h-screen bg-gray-100">
-            <img 
-              src={url} 
-              alt="Image File" 
-              className="max-h-screen max-w-full object-contain" 
+          <div className="relative w-full h-full">
+            <Image
+              src={url}
+              alt="File preview"
+              fill
+              className="object-contain"
+              priority
             />
           </div>
         );
@@ -334,5 +347,5 @@ export default function Page({ params }: { params: PageParams | Promise<PagePara
     }
   };
 
-  return <>{renderFileContent()}</>;
+  return <div className="w-full h-screen bg-gray-100">{renderFileContent()}</div>;
 }

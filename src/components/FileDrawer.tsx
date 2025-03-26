@@ -22,7 +22,7 @@ import { uploadData, remove } from '@aws-amplify/storage';
 import FolderIcon from '@mui/icons-material/Folder';
 import CloseIcon from '@mui/icons-material/Close';
 import UploadFileIcon from '@mui/icons-material/UploadFile';
-import DeleteIcon from '@mui/icons-material/Delete';
+
 import FileExplorer from './FileExplorer';
 import FilePreview from './FilePreview';
 import { useFileSystem } from '@/contexts/FileSystemContext';
@@ -46,12 +46,10 @@ interface FileDrawerProps {
 const FileDrawer: React.FC<FileDrawerProps> = ({ 
   open, 
   onClose, 
-  chatSessionId, 
-  variant = 'temporary' 
+  chatSessionId
 }) => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
-  const isSmall = useMediaQuery(theme.breakpoints.down('sm'));
   
   // State for the currently selected file to preview
   const [selectedFile, setSelectedFile] = useState<FileItem | null>(null);
@@ -425,7 +423,7 @@ const FileDrawer: React.FC<FileDrawerProps> = ({
       <Dialog open={deleteDialogOpen} onClose={() => setDeleteDialogOpen(false)}>
         <DialogTitle>Delete File</DialogTitle>
         <DialogContent>
-          Are you sure you want to delete "{fileToDelete?.name}"?
+          Are you sure you want to delete {fileToDelete?.name}?
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setDeleteDialogOpen(false)}>Cancel</Button>
