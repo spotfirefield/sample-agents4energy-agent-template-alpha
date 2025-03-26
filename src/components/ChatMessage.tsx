@@ -6,7 +6,8 @@ import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import DescriptionIcon from '@mui/icons-material/Description';
 import UpdateIcon from '@mui/icons-material/Update';
 import VisibilityIcon from '@mui/icons-material/Visibility';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import React from 'react';
 
 import { Message } from '@/../utils/types';
 import { useFileSystem } from '@/contexts/FileSystemContext';
@@ -446,8 +447,40 @@ const ChatMessage = (params: {
                 case 'textToTableTool':
                     try {
                         const tableData = JSON.parse(params.message.content?.text || '{}');
+                        const [currentPage, setCurrentPage] = React.useState(0);
+                        const rowsPerPage = 5;
+                        const totalPages = Math.ceil((tableData.data?.length || 0) / rowsPerPage);
+                        const containerRef = React.useRef<HTMLDivElement>(null);
+                        
+                        const handlePageChange = React.useCallback((newPage: number) => {
+                            // Ensure the new page is within bounds
+                            const boundedPage = Math.max(0, Math.min(newPage, totalPages - 1));
+                            setCurrentPage(boundedPage);
+                        }, [totalPages]);
+
+                        const paginatedData = React.useMemo(() => 
+                            tableData.data?.slice(
+                                currentPage * rowsPerPage,
+                                (currentPage + 1) * rowsPerPage
+                            ) || [],
+                            [tableData.data, currentPage, rowsPerPage]
+                        );
+
+                        // Effect to maintain scroll position
+                        React.useEffect(() => {
+                            if (containerRef.current) {
+                                const container = containerRef.current;
+                                const rect = container.getBoundingClientRect();
+                                const isVisible = rect.top >= 0 && rect.bottom <= window.innerHeight;
+                                
+                                if (!isVisible) {
+                                    container.scrollIntoView({ behavior: 'instant', block: 'nearest' });
+                                }
+                            }
+                        }, [currentPage]);
+
                         return (
-                            <div style={{
+                            <div ref={containerRef} style={{
                                 backgroundColor: theme.palette.grey[50],
                                 padding: theme.spacing(2),
                                 borderRadius: theme.shape.borderRadius,
@@ -458,130 +491,166 @@ const ChatMessage = (params: {
                                 <div style={{
                                     display: 'flex',
                                     alignItems: 'center',
-                                    gap: theme.spacing(1),
+                                    justifyContent: 'space-between',
                                     marginBottom: theme.spacing(1.5),
                                     color: theme.palette.primary.main
                                 }}> 
-                                    <DescriptionIcon />
-                                    <Typography variant="subtitle1" fontWeight="medium">
-                                        {tableData.messageContentType === 'tool_table' ? 'Table Data' : 'Table View'}
-                                    </Typography>
+                                    <div style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: theme.spacing(1)
+                                    }}>
+                                        <DescriptionIcon />
+                                        <Typography variant="subtitle1" fontWeight="medium">
+                                            {tableData.messageContentType === 'tool_table' ? 'Table Data' : 'Table View'}
+                                        </Typography>
+                                    </div>
+                                    <div style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: theme.spacing(2)
+                                    }}>
+                                        <Typography variant="body2" color="textSecondary">
+                                            Page {currentPage + 1} of {totalPages}
+                                        </Typography>
+                                        <div style={{ display: 'flex', gap: theme.spacing(1) }}>
+                                            <Button
+                                                size="small"
+                                                onClick={(e) => {
+                                                    e.preventDefault();
+                                                    e.stopPropagation();
+                                                    handlePageChange(currentPage - 1);
+                                                }}
+                                                disabled={currentPage === 0}
+                                                variant="outlined"
+                                            >
+                                                Previous
+                                            </Button>
+                                            <Button
+                                                size="small"
+                                                onClick={(e) => {
+                                                    e.preventDefault();
+                                                    e.stopPropagation();
+                                                    handlePageChange(currentPage + 1);
+                                                }}
+                                                disabled={currentPage >= totalPages - 1}
+                                                variant="outlined"
+                                            >
+                                                Next
+                                            </Button>
+                                        </div>
+                                    </div>
                                 </div>
                                 
                                 {tableData.columns && tableData.data && (
                                     <div style={{ overflowX: 'auto', width: '100%' }}>
-                                        <div style={{ 
-                                            maxHeight: tableData.data.length > 5 ? '400px' : 'none', 
-                                            overflowY: tableData.data.length > 5 ? 'auto' : 'visible'
+                                        <table style={{ 
+                                            width: '100%', 
+                                            borderCollapse: 'collapse',
+                                            fontSize: '0.875rem',
+                                            boxShadow: '0 2px 4px rgba(0,0,0,0.05)',
+                                            backgroundColor: theme.palette.common.white
                                         }}>
-                                            <table style={{ 
-                                                width: '100%', 
-                                                borderCollapse: 'collapse',
-                                                fontSize: '0.875rem',
-                                                boxShadow: '0 2px 4px rgba(0,0,0,0.05)',
-                                                backgroundColor: theme.palette.common.white
+                                            <thead style={{
+                                                position: 'sticky',
+                                                top: 0,
+                                                zIndex: 1
                                             }}>
-                                                <thead style={{
-                                                    position: 'sticky',
-                                                    top: 0,
-                                                    zIndex: 1
+                                                <tr style={{
+                                                    backgroundColor: theme.palette.primary.main,
+                                                    color: theme.palette.primary.contrastText
                                                 }}>
-                                                    <tr style={{
-                                                        backgroundColor: theme.palette.primary.main,
-                                                        color: theme.palette.primary.contrastText
-                                                    }}>
-                                                        {tableData.columns.map((col: string, i: number) => (
-                                                            <th key={i} style={{ 
-                                                                padding: theme.spacing(1, 1.5),
-                                                                textAlign: 'left',
-                                                                fontWeight: 'bold'
-                                                            }}>
-                                                                {col}
-                                                            </th>
-                                                        ))}
-                                                    </tr>
-                                                </thead>
-                                                <tbody>
-                                                    {tableData.data.map((row: Record<string, string | undefined>, rowIndex: number) => {
-                                                        const hasFilePath = !!row.filePath;
-                                                        const rowBgColor = rowIndex % 2 === 0 ? theme.palette.common.white : theme.palette.grey[50];
-                                                        
-                                                        return (
-                                                        <Tooltip 
-                                                            key={`row-${rowIndex}-${row.filePath || rowIndex}`}
-                                                            title={hasFilePath ? `View file: ${row.filePath}` : ''}
-                                                            placement="top"
-                                                            disableHoverListener={!hasFilePath}
-                                                            arrow
+                                                    {tableData.columns.map((col: string, i: number) => (
+                                                        <th key={i} style={{ 
+                                                            padding: theme.spacing(1, 1.5),
+                                                            textAlign: 'left',
+                                                            fontWeight: 'bold'
+                                                        }}>
+                                                            {col}
+                                                        </th>
+                                                    ))}
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {paginatedData.map((row: Record<string, string | undefined>, rowIndex: number) => {
+                                                    const hasFilePath = !!row.filePath;
+                                                    const rowBgColor = rowIndex % 2 === 0 ? theme.palette.common.white : theme.palette.grey[50];
+                                                    
+                                                    return (
+                                                    <Tooltip 
+                                                        key={`row-${rowIndex}-${row.filePath || rowIndex}`}
+                                                        title={hasFilePath ? `View file: ${row.filePath}` : ''}
+                                                        placement="top"
+                                                        disableHoverListener={!hasFilePath}
+                                                        arrow
+                                                    >
+                                                        <tr style={{
+                                                            backgroundColor: rowBgColor,
+                                                            borderBottom: `1px solid ${theme.palette.grey[200]}`,
+                                                            cursor: hasFilePath ? 'pointer' : 'default',
+                                                            transition: 'background-color 0.2s ease'
+                                                        }} 
+                                                        onClick={() => {
+                                                            if (hasFilePath && row.filePath) {
+                                                                const encodedPath = row.filePath.split('/').map((segment: string) => encodeURIComponent(segment)).join('/');
+                                                                window.open(`/files/${encodedPath}`, '_blank');
+                                                            }
+                                                        }}
+                                                        onMouseEnter={(e) => {
+                                                            if (hasFilePath) {
+                                                                e.currentTarget.style.backgroundColor = theme.palette.action.hover;
+                                                            }
+                                                        }}
+                                                        onMouseLeave={(e) => {
+                                                            if (hasFilePath) {
+                                                                e.currentTarget.style.backgroundColor = rowBgColor;
+                                                            }
+                                                        }}
                                                         >
-                                                            <tr style={{
-                                                                backgroundColor: rowBgColor,
-                                                                borderBottom: `1px solid ${theme.palette.grey[200]}`,
-                                                                cursor: hasFilePath ? 'pointer' : 'default',
-                                                                transition: 'background-color 0.2s ease'
-                                                            }} 
-                                                            onClick={() => {
-                                                                if (hasFilePath && row.filePath) {
-                                                                    // Navigate to the files page with the s3Key
-                                                                    const encodedPath = row.filePath.split('/').map((segment: string) => encodeURIComponent(segment)).join('/');
-                                                                    window.open(`/files/${encodedPath}`, '_blank');
-                                                                }
-                                                            }}
-                                                            onMouseEnter={(e) => {
-                                                                if (hasFilePath) {
-                                                                    e.currentTarget.style.backgroundColor = theme.palette.action.hover;
-                                                                }
-                                                            }}
-                                                            onMouseLeave={(e) => {
-                                                                if (hasFilePath) {
-                                                                    e.currentTarget.style.backgroundColor = rowBgColor;
-                                                                }
-                                                            }}
-                                                            >
-                                                                {tableData.columns.map((col: string, colIndex: number) => (
-                                                                    <td key={colIndex} style={{ 
-                                                                        padding: theme.spacing(1, 1.5),
-                                                                        borderBottom: `1px solid ${theme.palette.grey[200]}`,
-                                                                        maxWidth: '250px',
-                                                                        overflow: 'hidden',
-                                                                        textOverflow: 'ellipsis',
-                                                                        position: 'relative'
-                                                                    }}>
-                                                                        {row.error && col === tableData.columns[0] ? (
-                                                                            <span style={{ color: theme.palette.error.main }}>
-                                                                                {row.error}
-                                                                            </span>
-                                                                        ) : (
-                                                                            <div style={{
-                                                                                maxHeight: col === 'Details' ? '100px' : 'none',
-                                                                                overflow: col === 'Details' ? 'auto' : 'visible',
-                                                                                whiteSpace: 'pre-wrap',
-                                                                                display: 'flex',
-                                                                                alignItems: 'center',
-                                                                                gap: '4px'
-                                                                            }}>
-                                                                                {String(row[col] || '')}
-                                                                                {hasFilePath && colIndex === 0 && (
-                                                                                    <VisibilityIcon 
-                                                                                        fontSize="small" 
-                                                                                        style={{ 
-                                                                                            fontSize: '14px',
-                                                                                            opacity: 0.6,
-                                                                                            color: theme.palette.primary.main
-                                                                                        }} 
-                                                                                    />
-                                                                                )}
-                                                                            </div>
-                                                                        )}
-                                                                    </td>
-                                                                ))}
-                                                            </tr>
-                                                        </Tooltip>
-                                                        );
-                                                    })}
-                                                </tbody>
-                                            </table>
-                                        </div>
+                                                            {tableData.columns.map((col: string, colIndex: number) => (
+                                                                <td key={colIndex} style={{ 
+                                                                    padding: theme.spacing(1, 1.5),
+                                                                    borderBottom: `1px solid ${theme.palette.grey[200]}`,
+                                                                    maxWidth: '250px',
+                                                                    overflow: 'hidden',
+                                                                    textOverflow: 'ellipsis',
+                                                                    position: 'relative'
+                                                                }}>
+                                                                    {row.error && col === tableData.columns[0] ? (
+                                                                        <span style={{ color: theme.palette.error.main }}>
+                                                                            {row.error}
+                                                                        </span>
+                                                                    ) : (
+                                                                        <div style={{
+                                                                            maxHeight: col === 'Details' ? '100px' : 'none',
+                                                                            overflow: col === 'Details' ? 'auto' : 'visible',
+                                                                            whiteSpace: 'pre-wrap',
+                                                                            display: 'flex',
+                                                                            alignItems: 'center',
+                                                                            gap: '4px'
+                                                                        }}>
+                                                                            {String(row[col] || '')}
+                                                                            {hasFilePath && colIndex === 0 && (
+                                                                                <VisibilityIcon 
+                                                                                    fontSize="small" 
+                                                                                    style={{ 
+                                                                                        fontSize: '14px',
+                                                                                        opacity: 0.6,
+                                                                                        color: theme.palette.primary.main
+                                                                                    }} 
+                                                                                />
+                                                                            )}
+                                                                        </div>
+                                                                    )}
+                                                                </td>
+                                                            ))}
+                                                        </tr>
+                                                    </Tooltip>
+                                                    );
+                                                })}
+                                            </tbody>
+                                        </table>
+
                                         {tableData.matchedFileCount && (
                                             <Typography variant="caption" color="textSecondary" style={{ 
                                                 display: 'block',
