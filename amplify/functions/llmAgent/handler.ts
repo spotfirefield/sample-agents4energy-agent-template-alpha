@@ -13,7 +13,6 @@ import { userInputTool, writeFile, listFiles, readFile, updateFile, setChatSessi
 import { Schema } from '../../data/resource';
 
 import { getLangChainChatMessagesStartingWithHumanMessage, getLangChainMessageTextContent, publishMessage, stringifyLimitStringLength } from '../../../utils/langChainUtils';
-import { S3Client } from "@aws-sdk/client-s3";
 import { EventEmitter } from "events";
 
 // Increase the default max listeners to prevent warnings
@@ -26,9 +25,6 @@ export const handler: Schema["invokeAgent"]["functionHandler"] = async (event, c
         if (event.arguments.chatSessionId === null) throw new Error("chatSessionId is required");
         if (!event.identity) throw new Error("Event does not contain identity");
         if (!('sub' in event.identity)) throw new Error("Event does not contain user");
-
-        // Create S3 client early as we need it for downloading files
-        const s3Client = new S3Client();
         
         // Set the chat session ID for use by the S3 tools
         setChatSessionId(event.arguments.chatSessionId);
