@@ -3,6 +3,8 @@ import { z } from "zod";
 import * as path from "path";
 import { S3Client, PutObjectCommand, ListObjectsV2Command, GetObjectCommand } from "@aws-sdk/client-s3";
 import { ChatBedrockConverse } from "@langchain/aws";
+import { getConfiguredAmplifyClient } from '../../../utils/amplifyUtils';
+import { publishResponseStreamChunk } from "../graphql/mutations";
 
 const userInputToolSchema = z.object({
     title: z.string(),
@@ -579,6 +581,24 @@ function getUserPrefix(): string {
     return getChatSessionPrefix();
 }
 
+// Function to publish progress updates
+async function publishProgressUpdate(processedCount: number, totalCount: number, chatSessionId: string) {
+    const amplifyClient = getConfiguredAmplifyClient();
+    try {
+        const progressMessage = `Processing files: ${processedCount}/${totalCount} (${Math.round((processedCount/totalCount) * 100)}%)`;
+        await amplifyClient.graphql({
+            query: publishResponseStreamChunk,
+            variables: {
+                chunkText: progressMessage,
+                index: processedCount,
+                chatSessionId
+            }
+        });
+    } catch (error) {
+        console.error('Error publishing progress update:', error);
+    }
+}
+
 // Convert textToTableTool to use the tool function from langchain
 export const textToTableTool = tool(
     async (params: TextToTableParams) => {
@@ -748,6 +768,7 @@ export const textToTableTool = tool(
             // Process each file with concurrency limit
             const tableRows = [];
             const concurrencyLimit = 2; // Process x files at a time
+            let processedCount = 0;
             
             // Process files in batches to avoid hitting limits
             for (let i = 0; i < matchingFiles.length; i += concurrencyLimit) {
@@ -827,6 +848,10 @@ export const textToTableTool = tool(
                 // Wait for all batch promises to resolve
                 const batchResults = await Promise.all(batchPromises);
                 tableRows.push(...batchResults);
+                
+                // Update progress
+                processedCount += batch.length;
+                await publishProgressUpdate(processedCount, matchingFiles.length, _chatSessionId || '');
             }
 
             console.log(`Generated ${tableRows.length} table rows`);
