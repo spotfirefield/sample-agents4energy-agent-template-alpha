@@ -16,6 +16,7 @@ import DownloadIcon from '@mui/icons-material/Download';
 import ImageIcon from '@mui/icons-material/Image';
 import TextSnippetIcon from '@mui/icons-material/TextSnippet';
 import InsertDriveFileIcon from '@mui/icons-material/InsertDriveFile';
+import DeleteIcon from '@mui/icons-material/Delete';
 import { useFileSystem } from '@/contexts/FileSystemContext';
 
 // File type detection helpers
@@ -37,9 +38,10 @@ interface FilePreviewProps {
   fileName: string;
   fileUrl: string;
   embedded?: boolean;
+  onDelete?: () => void;
 }
 
-const FilePreview: React.FC<FilePreviewProps> = ({ open, onClose, fileName, fileUrl, embedded = false }) => {
+const FilePreview: React.FC<FilePreviewProps> = ({ open, onClose, fileName, fileUrl, embedded = false, onDelete }) => {
   const [textContent, setTextContent] = useState<string>('');
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
@@ -240,9 +242,16 @@ const FilePreview: React.FC<FilePreviewProps> = ({ open, onClose, fileName, file
           <Typography variant="subtitle2" noWrap sx={{ maxWidth: '80%' }}>
             {fileName}
           </Typography>
-          <IconButton size="small" onClick={onClose}>
-            <CloseIcon fontSize="small" />
-          </IconButton>
+          <Box sx={{ display: 'flex', gap: 1 }}>
+            {onDelete && (
+              <IconButton size="small" onClick={onDelete} color="error">
+                <DeleteIcon fontSize="small" />
+              </IconButton>
+            )}
+            <IconButton size="small" onClick={onClose}>
+              <CloseIcon fontSize="small" />
+            </IconButton>
+          </Box>
         </Box>
         <Box sx={{ flexGrow: 1, overflow: 'hidden' }}>
           {renderContent()}

@@ -107,9 +107,9 @@ const FileExplorer: React.FC<FileExplorerProps> = ({ chatSessionId, onFileSelect
   const basePath = `chatSessionArtifacts/sessionId=${chatSessionId}/`;
 
   // Function to load files and folders
-  const loadFiles = useCallback(async (path: string = '') => {
-    // Prevent multiple concurrent loads
-    if (loadingRef.current) return;
+  const loadFiles = useCallback(async (path: string = '', forceRefresh: boolean = false) => {
+    // Only prevent concurrent loads if not forcing a refresh
+    if (loadingRef.current && !forceRefresh) return;
     
     loadingRef.current = true;
     setLoading(true);
@@ -195,7 +195,7 @@ const FileExplorer: React.FC<FileExplorerProps> = ({ chatSessionId, onFileSelect
   // Reload files when lastRefreshTime changes
   useEffect(() => {
     if (lastRefreshTime > 0) {
-      loadFiles(currentPath);
+      loadFiles(currentPath, true); // Force refresh when triggered by lastRefreshTime
     }
   }, [lastRefreshTime, currentPath, loadFiles]);
   
