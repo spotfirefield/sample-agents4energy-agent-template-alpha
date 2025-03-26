@@ -150,16 +150,17 @@ const FileDrawer: React.FC<FileDrawerProps> = ({
         <Box
           sx={{
             position: 'fixed',
-            top: 0,
+            top: 64, // Start below TopNavBar
             right: 0,
             width: drawerWidth,
-            height: '100%',
+            height: 'calc(100% - 64px)',
             backgroundColor: 'background.paper',
-            boxShadow: '-4px 0 8px rgba(0,0,0,0.1)',
+            boxShadow: '-8px 0 20px rgba(0,0,0,0.1)',
             zIndex: theme.zIndex.drawer,
             display: 'flex',
             flexDirection: 'column',
             overflow: 'hidden',
+            borderLeft: '1px solid rgba(0,0,0,0.08)',
           }}
         >
           <Box
@@ -167,14 +168,16 @@ const FileDrawer: React.FC<FileDrawerProps> = ({
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
-              p: 2,
-              bgcolor: 'primary.main',
-              color: 'primary.contrastText',
+              p: 1.5,
+              bgcolor: theme.palette.background.paper,
+              color: theme.palette.text.primary,
+              borderBottom: '1px solid rgba(0,0,0,0.08)',
+              boxShadow: '0 2px 4px rgba(0,0,0,0.03)',
             }}
           >
             <Box sx={{ display: 'flex', alignItems: 'center' }}>
-              <FolderIcon sx={{ mr: 1 }} />
-              <Typography variant="h6" noWrap>
+              <FolderIcon sx={{ mr: 1, color: theme.palette.primary.main }} />
+              <Typography variant="h6" fontWeight="500" noWrap>
                 Session Files
               </Typography>
             </Box>
@@ -196,14 +199,17 @@ const FileDrawer: React.FC<FileDrawerProps> = ({
                   color="primary"
                   disabled={isUploading}
                   sx={{ 
-                    backgroundColor: 'primary.main',
-                    color: 'primary.contrastText',
+                    backgroundColor: theme.palette.primary.main,
+                    color: theme.palette.primary.contrastText,
                     '&:hover': {
-                      backgroundColor: 'primary.dark',
+                      backgroundColor: theme.palette.primary.dark,
                     },
                     '&.Mui-disabled': {
                       backgroundColor: 'action.disabledBackground',
-                    }
+                    },
+                    borderRadius: '6px',
+                    textTransform: 'none',
+                    boxShadow: 'none',
                   }}
                 >
                   Upload
@@ -211,7 +217,12 @@ const FileDrawer: React.FC<FileDrawerProps> = ({
               </label>
               <IconButton
                 onClick={onClose}
-                sx={{ color: 'primary.contrastText' }}
+                sx={{ 
+                  color: theme.palette.text.secondary,
+                  '&:hover': {
+                    backgroundColor: 'rgba(0,0,0,0.04)',
+                  },
+                }}
                 size="small"
               >
                 <CloseIcon />
@@ -224,6 +235,7 @@ const FileDrawer: React.FC<FileDrawerProps> = ({
           <Box sx={{ 
             height: 'calc(100% - 64px)', // Subtract header height
             overflow: 'hidden',
+            backgroundColor: theme.palette.background.default,
           }}>
             {/* Split view for larger devices using Stack instead of Grid2 */}
             <Stack 
@@ -231,13 +243,13 @@ const FileDrawer: React.FC<FileDrawerProps> = ({
               sx={{ height: '100%' }}
               divider={<Divider orientation="vertical" flexItem />}
             >
-              <Box sx={{ width: '40%', height: '100%', overflow: 'auto', p: 1 }}>
+              <Box sx={{ width: '40%', height: '100%', overflow: 'auto', p: 2, backgroundColor: theme.palette.background.default }}>
                 <FileExplorer 
                   chatSessionId={chatSessionId} 
                   onFileSelect={handleFileSelect}
                 />
               </Box>
-              <Box sx={{ width: '60%', height: '100%', overflow: 'auto', p: 1 }}>
+              <Box sx={{ width: '60%', height: '100%', overflow: 'auto', p: 2, backgroundColor: theme.palette.background.paper }}>
                 {selectedFile ? (
                   <FilePreview
                     open={!!selectedFile}
@@ -255,9 +267,11 @@ const FileDrawer: React.FC<FileDrawerProps> = ({
                       display: 'flex', 
                       alignItems: 'center', 
                       justifyContent: 'center',
-                      bgcolor: 'background.default',
+                      bgcolor: theme.palette.background.paper,
                       p: 3,
-                      textAlign: 'center'
+                      textAlign: 'center',
+                      borderRadius: '8px',
+                      border: '1px dashed rgba(0,0,0,0.12)',
                     }}
                   >
                     <Typography color="textSecondary">
@@ -279,7 +293,11 @@ const FileDrawer: React.FC<FileDrawerProps> = ({
             <Alert 
               onClose={handleCloseUploadMessage} 
               severity={isUploading ? "info" : "success"} 
-              sx={{ width: '100%' }}
+              sx={{ 
+                width: '100%',
+                boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+                borderRadius: '8px',
+              }}
               icon={isUploading ? <CircularProgress size={20} /> : undefined}
             >
               {uploadMessage}
@@ -299,6 +317,11 @@ const FileDrawer: React.FC<FileDrawerProps> = ({
             '& .MuiDrawer-paper': {
               width: drawerWidth,
               boxSizing: 'border-box',
+              top: 64,
+              height: 'calc(100% - 64px)',
+              zIndex: theme.zIndex.drawer,
+              boxShadow: '-8px 0 20px rgba(0,0,0,0.1)',
+              borderLeft: '1px solid rgba(0,0,0,0.08)',
             },
           }}
         >
@@ -307,14 +330,16 @@ const FileDrawer: React.FC<FileDrawerProps> = ({
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
-              p: 2,
-              bgcolor: 'primary.main',
-              color: 'primary.contrastText',
+              p: 1.5,
+              bgcolor: theme.palette.background.paper,
+              color: theme.palette.text.primary,
+              borderBottom: '1px solid rgba(0,0,0,0.08)',
+              boxShadow: '0 2px 4px rgba(0,0,0,0.03)',
             }}
           >
             <Box sx={{ display: 'flex', alignItems: 'center' }}>
-              <FolderIcon sx={{ mr: 1 }} />
-              <Typography variant="h6" noWrap>
+              <FolderIcon sx={{ mr: 1, color: theme.palette.primary.main }} />
+              <Typography variant="h6" fontWeight="500" noWrap>
                 Session Files
               </Typography>
             </Box>
@@ -336,14 +361,17 @@ const FileDrawer: React.FC<FileDrawerProps> = ({
                   color="primary"
                   disabled={isUploading}
                   sx={{ 
-                    backgroundColor: 'primary.main',
-                    color: 'primary.contrastText',
+                    backgroundColor: theme.palette.primary.main,
+                    color: theme.palette.primary.contrastText,
                     '&:hover': {
-                      backgroundColor: 'primary.dark',
+                      backgroundColor: theme.palette.primary.dark,
                     },
                     '&.Mui-disabled': {
                       backgroundColor: 'action.disabledBackground',
-                    }
+                    },
+                    borderRadius: '6px',
+                    textTransform: 'none',
+                    boxShadow: 'none',
                   }}
                 >
                   Upload
@@ -351,7 +379,12 @@ const FileDrawer: React.FC<FileDrawerProps> = ({
               </label>
               <IconButton
                 onClick={onClose}
-                sx={{ color: 'primary.contrastText' }}
+                sx={{ 
+                  color: theme.palette.text.secondary,
+                  '&:hover': {
+                    backgroundColor: 'rgba(0,0,0,0.04)',
+                  },
+                }}
                 size="small"
               >
                 <CloseIcon />
@@ -364,18 +397,27 @@ const FileDrawer: React.FC<FileDrawerProps> = ({
           <Box sx={{ 
             height: 'calc(100% - 64px)', // Subtract header height
             overflow: 'hidden',
+            backgroundColor: theme.palette.background.default,
           }}>
             {/* Stack view for small devices */}
             <Box sx={{ height: '100%' }}>
               {selectedFile ? (
                 // Show file preview with back button on small screens
                 <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-                  <Box sx={{ p: 1 }}>
-                    <IconButton onClick={() => setSelectedFile(null)} size="small">
-                      <FolderIcon /> Back to files
-                    </IconButton>
+                  <Box sx={{ p: 1.5, borderBottom: '1px solid rgba(0,0,0,0.08)' }}>
+                    <Button 
+                      onClick={() => setSelectedFile(null)} 
+                      startIcon={<FolderIcon />} 
+                      variant="text"
+                      sx={{ 
+                        textTransform: 'none',
+                        color: theme.palette.primary.main,
+                      }}
+                    >
+                      Back to files
+                    </Button>
                   </Box>
-                  <Box sx={{ flexGrow: 1, overflow: 'auto', p: 1 }}>
+                  <Box sx={{ flexGrow: 1, overflow: 'auto', p: 2, backgroundColor: theme.palette.background.paper }}>
                     {selectedFile && (
                       <FilePreview
                         open={!!selectedFile}
@@ -390,7 +432,7 @@ const FileDrawer: React.FC<FileDrawerProps> = ({
                 </Box>
               ) : (
                 // Show file explorer
-                <Box sx={{ height: '100%', overflow: 'auto', p: 1 }}>
+                <Box sx={{ height: '100%', overflow: 'auto', p: 2, backgroundColor: theme.palette.background.default }}>
                   <FileExplorer 
                     chatSessionId={chatSessionId} 
                     onFileSelect={handleFileSelect}
@@ -410,7 +452,11 @@ const FileDrawer: React.FC<FileDrawerProps> = ({
             <Alert 
               onClose={handleCloseUploadMessage} 
               severity={isUploading ? "info" : "success"} 
-              sx={{ width: '100%' }}
+              sx={{ 
+                width: '100%',
+                boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+                borderRadius: '8px',
+              }}
               icon={isUploading ? <CircularProgress size={20} /> : undefined}
             >
               {uploadMessage}
@@ -420,14 +466,43 @@ const FileDrawer: React.FC<FileDrawerProps> = ({
       )}
 
       {/* Delete confirmation dialog */}
-      <Dialog open={deleteDialogOpen} onClose={() => setDeleteDialogOpen(false)}>
-        <DialogTitle>Delete File</DialogTitle>
-        <DialogContent>
-          Are you sure you want to delete {fileToDelete?.name}?
+      <Dialog 
+        open={deleteDialogOpen} 
+        onClose={() => setDeleteDialogOpen(false)}
+        PaperProps={{
+          sx: {
+            borderRadius: '8px',
+            boxShadow: '0 8px 24px rgba(0,0,0,0.15)',
+          }
+        }}
+      >
+        <DialogTitle sx={{ borderBottom: '1px solid rgba(0,0,0,0.08)' }}>Delete File</DialogTitle>
+        <DialogContent sx={{ py: 2, mt: 1 }}>
+          <Typography>
+            Are you sure you want to delete <strong>{fileToDelete?.name}</strong>?
+          </Typography>
         </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setDeleteDialogOpen(false)}>Cancel</Button>
-          <Button onClick={handleDeleteConfirm} color="error" variant="contained">
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button 
+            onClick={() => setDeleteDialogOpen(false)}
+            variant="outlined"
+            sx={{ 
+              textTransform: 'none',
+              borderRadius: '6px',
+            }}
+          >
+            Cancel
+          </Button>
+          <Button 
+            onClick={handleDeleteConfirm} 
+            color="error" 
+            variant="contained"
+            sx={{ 
+              textTransform: 'none',
+              borderRadius: '6px',
+              boxShadow: 'none',
+            }}
+          >
             Delete
           </Button>
         </DialogActions>
