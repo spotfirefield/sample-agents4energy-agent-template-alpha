@@ -44,13 +44,12 @@ export const handler: Schema["invokeAgent"]["functionHandler"] = async (event, c
         const chatSessionMessages = await getLangChainChatMessagesStartingWithHumanMessage(event.arguments.chatSessionId)
 
         const agentModel = new ChatBedrockConverse({
-            model: process.env.MODEL_ID,
+            model: process.env.AGENT_MODEL_ID,
             // temperature: 0
         });
 
         const agentTools = [
             new Calculator(),
-            // pythonInterpreterTool,
             userInputTool,
             listFiles,
             readFile,
@@ -70,7 +69,12 @@ If you don't have the access to the information you need, make a reasonable gues
 Use markdown formatting for your responses (like **bold**, *italic*, ## headings, etc.), but DO NOT wrap your response in markdown code blocks.
 Today's date is ${new Date().toLocaleDateString()}.
 
-Create intermediate files to store your thoughts and work. Use the writeFile tool to create these files. Store them in the 'intermediateFiles' directory.
+Create intermediate files to store your planned actions, thoughts and work. Use the writeFile tool to create these files. Store them in the 'intermediateFiles' directory.
+
+When creating reports:
+- Use the writeFile tool to create the first draft of the report file
+- Use html formatting for the report by default
+- Put reports in the 'reports' directory
 
 When using the file management tools:
 - The listFiles tool returns separate 'directories' and 'files' fields to clearly distinguish between them
