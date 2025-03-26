@@ -123,7 +123,7 @@ const ChatBox = (params: {
             }
 
             //Only set the chunk message if the inital chunk is defined. This prevents the race condition between the message and the chunk
-            if (prevChunks[0]) {
+            if (prevChunks[0] || true) {
               setStreamChunkMessage({
                 id: 'streamChunkMessage',
                 role: 'ai',

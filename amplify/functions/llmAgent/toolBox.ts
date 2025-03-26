@@ -581,16 +581,48 @@ function getUserPrefix(): string {
     return getChatSessionPrefix();
 }
 
+// Track the start time for progress updates
+let progressUpdateStartTime: Date | null = null;
+
 // Function to publish progress updates
-async function publishProgressUpdate(processedCount: number, totalCount: number, chatSessionId: string) {
+async function publishProgressUpdate(processedCount: number, totalCount: number, chatSessionId: string, startTime?: Date) {
     const amplifyClient = getConfiguredAmplifyClient();
     try {
-        const progressMessage = `Processing files: ${processedCount}/${totalCount} (${Math.round((processedCount/totalCount) * 100)}%)`;
+        // Initialize the start time if it's not set yet
+        if (!progressUpdateStartTime) {
+            progressUpdateStartTime = startTime || new Date();
+        }
+        
+        // Calculate time elapsed and estimate time remaining
+        const timeElapsed = (new Date().getTime() - progressUpdateStartTime.getTime()) / 1000; // in seconds
+        let timeRemaining = "calculating...";
+        
+        // Only calculate time remaining once we have some progress (avoid division by zero)
+        if (processedCount > 0) {
+            const timePerItem = timeElapsed / processedCount;
+            const remainingItems = totalCount - processedCount;
+            const estimatedSecondsRemaining = timePerItem * remainingItems;
+            
+            // Format the time remaining in a human-readable format
+            if (estimatedSecondsRemaining < 60) {
+                timeRemaining = `${Math.round(estimatedSecondsRemaining)} seconds`;
+            } else if (estimatedSecondsRemaining < 3600) {
+                timeRemaining = `${Math.round(estimatedSecondsRemaining / 60)} minutes`;
+            } else {
+                const hours = Math.floor(estimatedSecondsRemaining / 3600);
+                const minutes = Math.round((estimatedSecondsRemaining % 3600) / 60);
+                timeRemaining = `${hours} hour${hours !== 1 ? 's' : ''} ${minutes} minute${minutes !== 1 ? 's' : ''}`;
+            }
+        }
+
+        const progressPercentage = Math.round((processedCount/totalCount) * 100);
+        const progressMessage = `Processing files: ${processedCount}/${totalCount} (${progressPercentage}%) - Est. time remaining: ${timeRemaining}`;
+        
         await amplifyClient.graphql({
             query: publishResponseStreamChunk,
             variables: {
                 chunkText: progressMessage,
-                index: processedCount,
+                index: 1,
                 chatSessionId
             }
         });
@@ -603,6 +635,20 @@ async function publishProgressUpdate(processedCount: number, totalCount: number,
 export const textToTableTool = tool(
     async (params: TextToTableParams) => {
         try {
+            // Reset progress timer at the start of each run
+            progressUpdateStartTime = new Date();
+            
+            // Publish initial notification
+            const amplifyClient = getConfiguredAmplifyClient();
+            await amplifyClient.graphql({
+                query: publishResponseStreamChunk,
+                variables: {
+                    chunkText: `Starting text to table conversion for files matching pattern: ${params.filePattern}`,
+                    index: 0,
+                    chatSessionId: _chatSessionId || ''
+                }
+            });
+
             console.log("textToTableTool params:", JSON.stringify(params, null, 2));
             
             // Create column name map to restore original column names later
@@ -792,7 +838,7 @@ export const textToTableTool = tool(
 
                         // Use the ChatBedrockConverse model with structured output
                         const modelClient = new ChatBedrockConverse({
-                            model: process.env.MODEL_ID,
+                            model: process.env.TEXT_TO_TABLE_MODEL_ID,
                             // Add some safety to avoid excessive token usage
                             maxTokens: 4000
                         });
@@ -851,7 +897,7 @@ export const textToTableTool = tool(
                 
                 // Update progress
                 processedCount += batch.length;
-                await publishProgressUpdate(processedCount, matchingFiles.length, _chatSessionId || '');
+                await publishProgressUpdate(processedCount, matchingFiles.length, _chatSessionId || '', new Date());
             }
 
             console.log(`Generated ${tableRows.length} table rows`);
