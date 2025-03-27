@@ -22,6 +22,16 @@ ChartJS.register(
 // Import Message type for content prop
 import { Message } from '@/../utils/types';
 
+// Declare a more specific type for the series data
+interface SeriesData {
+    label: string;
+    column: string;
+    color?: string;
+    data: string[];
+    sourceFile?: string;
+    xData?: string[]; // For multi-file datasets
+}
+
 export const PlotDataToolComponent = ({ content, theme, chatSessionId }: { 
     content: Message['content'], 
     theme: Theme,
@@ -33,12 +43,7 @@ export const PlotDataToolComponent = ({ content, theme, chatSessionId }: {
         plotType?: 'line' | 'scatter' | 'bar';
         title?: string;
         xAxis?: { label?: string; data?: string[] };
-        series?: Array<{
-            label: string;
-            column: string;
-            color?: string;
-            data: string[];
-        }>;
+        series?: Array<SeriesData>;
         xAxisColumn?: string;
         yAxisColumns?: Array<{
             column: string;
@@ -49,6 +54,8 @@ export const PlotDataToolComponent = ({ content, theme, chatSessionId }: {
         error?: string;
         suggestion?: string;
         availableColumns?: string[];
+        isMultiSource?: boolean;
+        sourceFiles?: string[];
     } | null>(null);
     const [error, setError] = React.useState<boolean>(false);
     const [errorMessage, setErrorMessage] = React.useState<string>('');
@@ -159,10 +166,48 @@ export const PlotDataToolComponent = ({ content, theme, chatSessionId }: {
         processData();
     }, [plotData, parseCSV]);
 
-    // Prepare chart data from CSV or directly from plotData.series
+    // Prepare chart data from multiple sources or direct data
     const chartData = React.useMemo(() => {
         // If we have plotData with series already prepared
         if (plotData?.series && plotData.xAxis?.data) {
+            // Check if this is multi-file data
+            if (plotData.isMultiSource) {
+                // For multi-file data, we need to map each series to the common x-axis
+                const commonXLabels = plotData.xAxis.data;
+                
+                return {
+                    labels: commonXLabels,
+                    datasets: plotData.series.map((series, index) => {
+                        // For each x value in the common axis, find the corresponding y value from this series
+                        // or use null if no match (to create gaps in the line)
+                        const alignedData = commonXLabels.map(xValue => {
+                            // Find the index of this x value in the series' original x data
+                            if (!series.xData) {
+                                return null;
+                            }
+                            const seriesIndex = series.xData.findIndex((x: string) => x === xValue);
+                            // Return the y value if found, or null if not
+                            return seriesIndex >= 0 ? Number(series.data[seriesIndex]) || 0 : null;
+                        });
+                        
+                        return {
+                            label: series.label || `Series ${index + 1}`,
+                            data: alignedData,
+                            backgroundColor: series.color || seriesColors[index % seriesColors.length] + '66', // Add transparency
+                            borderColor: series.color || seriesColors[index % seriesColors.length],
+                            borderWidth: 2,
+                            pointBackgroundColor: series.color || seriesColors[index % seriesColors.length],
+                            tension: 0.1,
+                            // Allow gaps in line for missing data points
+                            spanGaps: true,
+                            // Show source file in tooltip
+                            sourceFile: series.sourceFile
+                        };
+                    })
+                };
+            }
+            
+            // Single file with multiple series (original code)
             return {
                 labels: plotData.xAxis.data,
                 datasets: plotData.series.map((series, index) => ({
@@ -172,7 +217,8 @@ export const PlotDataToolComponent = ({ content, theme, chatSessionId }: {
                     borderColor: series.color || seriesColors[index % seriesColors.length],
                     borderWidth: 2,
                     pointBackgroundColor: series.color || seriesColors[index % seriesColors.length],
-                    tension: 0.1
+                    tension: 0.1,
+                    sourceFile: series.sourceFile
                 }))
             };
         }
@@ -202,81 +248,94 @@ export const PlotDataToolComponent = ({ content, theme, chatSessionId }: {
         };
     }, [plotData, csvData, seriesColors]);
 
-    // Chart options
-    const chartOptions = React.useMemo(() => {
-        const options: ChartOptions<'line' | 'bar' | 'scatter'> = {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-                legend: {
-                    position: 'top',
-                    display: (chartData.datasets?.length || 0) > 1, // Only show legend when multiple series
-                },
-                title: {
-                    display: true,
-                    text: plotData?.title || 'Data Plot',
-                    font: {
-                        size: 16,
-                        weight: 'bold'
-                    }
-                },
-                tooltip: {
-                    enabled: true,
-                    backgroundColor: theme.palette.grey[800],
-                    titleFont: {
-                        size: 14
-                    },
-                    bodyFont: {
-                        size: 13
-                    },
-                    padding: 10,
-                    cornerRadius: 4
+    // Declare a type for chart dataset
+    interface ChartDataset {
+        label: string;
+        data: (number | null)[];
+        backgroundColor: string;
+        borderColor: string;
+        borderWidth: number;
+        pointBackgroundColor: string;
+        tension: number;
+        sourceFile?: string;
+        spanGaps?: boolean;
+    }
+
+    // Update chart options to show sourceFile in tooltips
+    const chartOptions = React.useMemo(() => ({
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+            legend: {
+                position: 'top' as const,
+                display: (chartData.datasets?.length || 0) > 1, // Only show legend when multiple series
+            },
+            title: {
+                display: true,
+                text: plotData?.title || 'Data Plot',
+                font: {
+                    size: 16,
+                    weight: 'bold' as const
                 }
             },
-            scales: {
-                x: {
-                    title: {
-                        display: true,
-                        text: plotData?.xAxis?.label || 'X',
-                        font: {
-                            size: 14,
-                            weight: 'bold'
-                        }
-                    },
-                    grid: {
-                        display: true,
-                        color: theme.palette.grey[200]
-                    }
+            tooltip: {
+                enabled: true,
+                backgroundColor: theme.palette.grey[800],
+                titleFont: {
+                    size: 14
                 },
-                y: {
-                    type: 'logarithmic',
-                    title: {
-                        display: true,
-                        text: plotData?.series?.[0]?.label || 'Y',
-                        font: {
-                            size: 14,
-                            weight: 'bold'
+                bodyFont: {
+                    size: 13
+                },
+                padding: 10,
+                cornerRadius: 4,
+                callbacks: {
+                    afterBody: (tooltipItems: any[]) => {
+                        const item = tooltipItems[0];
+                        if (!item) return '';
+                        
+                        const dataset = chartData.datasets[item.datasetIndex] as ChartDataset;
+                        if (dataset.sourceFile) {
+                            return `Source: ${dataset.sourceFile.split('/').pop()}`;
                         }
-                    },
-                    grid: {
-                        display: true,
-                        color: theme.palette.grey[200]
-                    },
-                    ticks: {
-                        callback: (value) => {
-                            const numValue = Number(value);
-                            if (numValue === 0) return '0';
-                            if (numValue < 1) return numValue.toExponential(0);
-                            return numValue.toLocaleString();
-                        }
-                    },
-                    min: 0.1 // Set minimum value to avoid log(0) error
+                        return '';
+                    }
                 }
             }
-        };
-        
-        return options;
-    }, [plotData?.title, plotData?.xAxis?.label, plotData?.series?.[0]?.label, theme, chartData.datasets?.length]);
+        },
+        scales: {
+            x: {
+                title: {
+                    display: true,
+                    text: plotData?.xAxis?.label || 'X',
+                    font: {
+                        size: 14,
+                        weight: 'bold' as const
+                    }
+                },
+                grid: {
+                    display: true,
+                    color: theme.palette.grey[200]
+                }
+            },
+            y: {
+                title: {
+                    display: true,
+                    text: plotData?.series && plotData.series.length === 1 
+                        ? plotData.series[0].label 
+                        : 'Value',
+                    font: {
+                        size: 14,
+                        weight: 'bold' as const
+                    }
+                },
+                grid: {
+                    display: true,
+                    color: theme.palette.grey[200]
+                }
+            }
+        }
+    }), [plotData, theme, chartData.datasets?.length, chartData.datasets]);
 
     // Render the appropriate chart based on plotType
     const renderChart = () => {

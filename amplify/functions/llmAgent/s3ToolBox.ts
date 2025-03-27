@@ -17,6 +17,13 @@ const readFileSchema = z.object({
     filename: z.string().describe("The path to the file. This can include subdirectories"),
 });
 
+// Schema for searching files
+const searchFilesSchema = z.object({
+    filePattern: z.string().describe("Regex pattern to match files. For example: '.*\\.txt$' for all text files, or 'data/.*' for all files in the data directory."),
+    maxFiles: z.number().optional().default(100).describe("Maximum number of files to return. Defaults to 100."),
+    includeGlobal: z.boolean().optional().default(true).describe("Whether to include global files in the search. Defaults to true."),
+});
+
 // Schema for writing a file
 const writeFileSchema = z.object({
     filename: z.string().describe("The path to the file. This can include subdirectories"),
@@ -645,7 +652,7 @@ export const textToTableTool = tool(
                 });
             }
 
-            params.tableColumns.unshift({
+            enhancedTableColumns.unshift({
                 columnName: 'date',
                 columnDescription: `The date of the event in YYYY-MM-DD format. Can be null if no date is available.`,
                 columnDataDefinition: {
@@ -773,7 +780,7 @@ export const textToTableTool = tool(
 
             // Process each file with concurrency limit
             const tableRows = [];
-            const concurrencyLimit = 5; // Process x files at a time
+            const concurrencyLimit = 3; // Process x files at a time
             let processedCount = 0;
             
             // Process files in batches to avoid hitting limits
@@ -1184,10 +1191,92 @@ async function findFilesMatchingPattern(basePrefix: string, pattern: string): Pr
     return matchingFiles;
 }
 
+// Tool to search for files matching a pattern
+export const searchFiles = tool(
+    async ({ filePattern, maxFiles = 100, includeGlobal = true }) => {
+        try {
+            const matchingFiles: string[] = [];
+            
+            // Search in user files
+            const userFiles = await findFilesMatchingPattern(
+                getUserPrefix(),
+                filePattern
+            );
+            matchingFiles.push(...userFiles);
+            
+            // Search in global files if requested
+            if (includeGlobal) {
+                const globalFiles = await findFilesMatchingPattern(
+                    GLOBAL_PREFIX,
+                    filePattern
+                );
+                matchingFiles.push(...globalFiles);
+            }
+            
+            // Format file paths for display
+            const formattedFiles = matchingFiles.map(fileKey => {
+                if (fileKey.startsWith(GLOBAL_PREFIX)) {
+                    return `global/${fileKey.substring(GLOBAL_PREFIX.length)}`;
+                } else {
+                    return fileKey.substring(getUserPrefix().length);
+                }
+            });
+            
+            // Limit results
+            const limitedFiles = formattedFiles.slice(0, maxFiles);
+            const hasMore = formattedFiles.length > maxFiles;
+            
+            // Return results
+            return JSON.stringify({
+                files: limitedFiles,
+                count: limitedFiles.length,
+                totalCount: formattedFiles.length,
+                hasMore,
+                pattern: filePattern,
+                message: hasMore 
+                    ? `Found ${formattedFiles.length} files, showing first ${maxFiles}. Use a more specific pattern to narrow results.` 
+                    : `Found ${formattedFiles.length} files.`
+            });
+        } catch (error: any) {
+            return JSON.stringify({
+                error: `Error searching files: ${error.message || error}`,
+                suggestion: "Check the file pattern and try again with a simpler pattern"
+            });
+        }
+    },
+    {
+        name: "searchFiles",
+        description: `
+        Search for files matching a regex pattern across user and global storage.
+        
+        File pattern examples:
+        - ".*\\.txt$" - all text files
+        - "data/.*" - all files in the data directory
+        - "logs/.*\\.log$" - all log files in the logs directory
+        - "\\d{4}-\\d{2}-\\d{2}" - files with dates in YYYY-MM-DD format
+        - "15_9_19_A" - files containing "15_9_19_A" anywhere in the path (simplified search)
+        
+        For global files:
+        - Use "global/..." for files in the global directory
+        - You can also just use a pattern like "15_9_19_A" without the "global/" prefix
+        
+        IMPORTANT: The pattern is automatically adjusted to improve matching:
+        - If you're looking for files containing a specific string (e.g., "15_9_19_A"), you can just provide that string
+        - The tool will automatically add wildcards if needed (e.g., converting "15_9_19_A" to ".*15_9_19_A.*")
+        - If no files are found with the specific pattern, the tool will attempt a broader search
+        
+        The file pattern is applied to the relative path (without the session prefix).
+        For more efficient searching, start your pattern with a literal directory prefix when possible.
+        `,
+        schema: searchFilesSchema,
+    }
+);
+
 export const s3FileManagementTools = [
     listFiles,
     readFile,
     writeFile,
     updateFile,
-    textToTableTool
+    textToTableTool,
+    searchFiles
 ]
