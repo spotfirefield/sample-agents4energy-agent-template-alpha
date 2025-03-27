@@ -59,7 +59,7 @@ export const handler: Schema["invokeAgent"]["functionHandler"] = async (event, c
 
         let systemMessageContent = `
 You are a helpful llm agent showing a demo workflow. 
-If you don't have the access to the information you need, make a reasonable guess and continue the demo.
+If you don't have the access to the information you need, generate the required information and save it in the data directory.
 Use markdown formatting for your responses (like **bold**, *italic*, ## headings, etc.), but DO NOT wrap your response in markdown code blocks.
 Today's date is ${new Date().toLocaleDateString()}.
 

@@ -15,7 +15,7 @@ import { useFileSystem } from '@/contexts/FileSystemContext';
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { stringifyLimitStringLength } from '../../utils/langChainUtils';
-import { PlotDataToolComponent } from './PlotDataToolComponent';
+import { PlotDataToolComponent } from './toolMessageComponents/PlotDataToolComponent';
 
 // Text to Table Tool Component - extracted to avoid conditional hooks
 const TextToTableToolComponent = ({ content, theme }: { 

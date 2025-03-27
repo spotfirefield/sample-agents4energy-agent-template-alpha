@@ -30,7 +30,11 @@ They should only inform someone besides the user about an action they should tak
 const plotDataToolSchema = z.object({
     filePath: z.string().describe("The path to the CSV file to plot"),
     xAxisColumn: z.string().describe("The name of the column to use for the x-axis"),
-    yAxisColumn: z.string().describe("The name of the column to use for the y-axis"),
+    yAxisColumns: z.array(z.object({
+        column: z.string().describe("The name of the column to use for the y-axis"),
+        label: z.string().optional().describe("Custom label for this data series"),
+        color: z.string().optional().describe("Optional color for this data series (hex code or named color)")
+    })).or(z.string().describe("Single column name to use for the y-axis")).describe("The column(s) to plot on the y-axis. Can be a single column name or an array of column objects for multiple series."),
     plotType: z.enum(["line", "scatter", "bar"]).optional().default("line").describe("The type of plot to create"),
     title: z.string().optional().describe("Optional title for the plot"),
     xAxisLabel: z.string().optional().describe("Optional label for the x-axis"),
@@ -38,7 +42,7 @@ const plotDataToolSchema = z.object({
 });
 
 export const plotDataTool = tool(
-    async ({ filePath, xAxisColumn, yAxisColumn, plotType = "line", title, xAxisLabel, yAxisLabel }) => {
+    async ({ filePath, xAxisColumn, yAxisColumns, plotType = "line", title, xAxisLabel, yAxisLabel }) => {
         try {
             // Read the CSV file
             const fileContent = await readFile.invoke({ filename: filePath });
@@ -63,7 +67,7 @@ export const plotDataTool = tool(
             // Get column names from header
             const headers = lines[0].split(',').map((h: string) => h.trim());
             
-            // Validate column names
+            // Validate x-axis column
             if (!headers.includes(xAxisColumn)) {
                 return JSON.stringify({
                     error: `X-axis column "${xAxisColumn}" not found in file`,
@@ -72,52 +76,74 @@ export const plotDataTool = tool(
                 });
             }
             
-            if (!headers.includes(yAxisColumn)) {
-                return JSON.stringify({
-                    error: `Y-axis column "${yAxisColumn}" not found in file`,
-                    availableColumns: headers,
-                    suggestion: "Check the column name and try again"
-                });
+            // Normalize yAxisColumns to always be an array of objects
+            const normalizedYColumns = Array.isArray(yAxisColumns) 
+                ? yAxisColumns 
+                : [{ column: yAxisColumns }];
+            
+            // Validate y-axis columns
+            for (const yCol of normalizedYColumns) {
+                if (!headers.includes(yCol.column)) {
+                    return JSON.stringify({
+                        error: `Y-axis column "${yCol.column}" not found in file`,
+                        availableColumns: headers,
+                        suggestion: "Check the column name and try again"
+                    });
+                }
             }
 
             // Get column indices
             const xIndex = headers.indexOf(xAxisColumn);
-            const yIndex = headers.indexOf(yAxisColumn);
+            const yIndices = normalizedYColumns.map(yCol => ({
+                index: headers.indexOf(yCol.column),
+                column: yCol.column,
+                label: yCol.label || yCol.column,
+                color: yCol.color
+            }));
 
             // Extract data points
-            const dataPoints = lines.slice(1)
+            const dataRows = lines.slice(1)
                 .filter((line: string) => line.trim()) // Skip empty lines
                 .map((line: string) => {
                     const values = line.split(',').map((v: string) => v.trim());
                     return {
                         x: values[xIndex],
-                        y: values[yIndex]
+                        y: yIndices.map(y => ({ 
+                            column: y.column,
+                            label: y.label,
+                            color: y.color,
+                            value: values[y.index] 
+                        }))
                     };
                 });
 
             // Validate data points
-            if (dataPoints.length === 0) {
+            if (dataRows.length === 0) {
                 return JSON.stringify({
                     error: "No valid data points found",
                     suggestion: "Check if the CSV file contains valid data"
                 });
             }
 
-            // Return the plot configuration
+            // Return the plot configuration with multiple series support
             return JSON.stringify({
                 messageContentType: 'plot_data',
                 filePath,
                 plotType,
-                title: title || `Plot of ${yAxisColumn} vs ${xAxisColumn}`,
+                title: title || `${normalizedYColumns.map(c => c.column).join(', ')} vs ${xAxisColumn}`,
                 xAxis: {
                     label: xAxisLabel || xAxisColumn,
-                    data: dataPoints.map((p: { x: string; y: string }) => p.x)
+                    data: dataRows.map((p: any) => p.x)
                 },
-                yAxis: {
-                    label: yAxisLabel || yAxisColumn,
-                    data: dataPoints.map((p: { x: string; y: string }) => p.y)
-                },
-                dataPoints
+                series: normalizedYColumns.map((col, idx) => ({
+                    label: col.label || col.column,
+                    column: col.column,
+                    color: col.color,
+                    data: dataRows.map((p: any) => p.y[idx].value)
+                })),
+                xAxisColumn,
+                yAxisColumns: normalizedYColumns,
+                dataRows
             });
         } catch (error: any) {
             return JSON.stringify({
@@ -129,14 +155,19 @@ export const plotDataTool = tool(
     {
         name: "plotDataTool",
         description: `
-Use this tool to create plots from CSV files.
+Use this tool to create plots from CSV files with support for multiple data series.
 The tool will validate the file existence and column names before returning the plot configuration.
 If the file or columns don't exist, it will return an error message with suggestions.
 
 Example usage:
 - Plot temperature vs time from a weather data CSV
 - Create a scatter plot of sales vs advertising spend
-- Generate a bar chart of monthly revenue
+- Generate a bar chart of monthly revenue comparing different products
+
+For multiple data series, provide an array of objects for yAxisColumns:
+- Plot energy production, consumption, and efficiency against time
+- Compare monthly sales for multiple products in a single chart
+- Visualize temperature variations across different locations
 
 The tool supports line, scatter, and bar plots.
 `,
