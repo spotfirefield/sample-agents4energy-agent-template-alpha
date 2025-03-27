@@ -6,9 +6,9 @@ import { getUrl } from 'aws-amplify/storage';
 type FileType = 'image' | 'pdf' | 'video' | 'audio' | 'text' | 'xml' | 'other';
 
 interface PageProps {
-  params: Promise<{
+  params: {
     s3Key: string[];
-  }>;
+  };
 }
 
 export default function FilePage({ params }: PageProps) {
@@ -23,14 +23,13 @@ export default function FilePage({ params }: PageProps) {
   const [textFetchError, setTextFetchError] = useState<boolean>(false);
 
   useEffect(() => {
-    // Handle the Promise params
-    params.then((resolvedParams) => {
-      setS3Key(resolvedParams.s3Key.join('/'));
-    }).catch((error) => {
-      console.error('Error resolving params:', error);
-      setError('Failed to load file parameters');
+    // Set the S3 key from params
+    if (params && params.s3Key) {
+      setS3Key(params.s3Key.join('/'));
+    } else {
+      setError('Invalid file path');
       setLoading(false);
-    });
+    }
   }, [params]);
 
   const determineFileType = (filePath: string): FileType => {
