@@ -45,6 +45,7 @@ const updateFileSchema = z.object({
 // Schema for text to table conversion
 const textToTableSchema = z.object({
     filePattern: z.string().describe("Regex pattern to select files for inclusion in the table. For example: '.*\\.txt$' for all text files, or 'data/.*' for all files in the data directory."),
+    tableTitle: z.string().describe("The title of the table to be created."),
     tableColumns: z.array(
         z.object({
             columnName: z.string().describe("The name of the column to include in the table."),
@@ -529,6 +530,7 @@ function normalizeColumnName(name: string): string {
 // Add TypeScript interface for the textToTableTool parameters
 interface TextToTableParams {
     filePattern: string;
+    tableTitle: string;
     tableColumns: Array<{
         columnName: string;
         columnDescription: string;
@@ -541,6 +543,7 @@ interface TextToTableParams {
     maxFiles?: number;
     dataToInclude?: string;
     dataToExclude?: string;
+    
 }
 
 // Function to get user-specific prefix
@@ -610,7 +613,7 @@ export const textToTableTool = tool(
             await amplifyClient.graphql({
                 query: publishResponseStreamChunk,
                 variables: {
-                    chunkText: `Starting text to table conversion for files matching pattern: ${params.filePattern}`,
+                    chunkText: `Starting text to table conversion for files matching pattern: ${params.filePattern}\n`,
                     index: 0,
                     chatSessionId: _chatSessionId || ''
                 }
@@ -618,6 +621,9 @@ export const textToTableTool = tool(
 
             console.log("textToTableTool params:", JSON.stringify(params, null, 2));
             
+            // Remove date column if it already exists
+            params.tableColumns = params.tableColumns.filter(column => column.columnName.toLowerCase() !== 'date');
+
             // Create column name map to restore original column names later
             const columnNameMap = Object.fromEntries(
                 params.tableColumns
@@ -652,6 +658,7 @@ export const textToTableTool = tool(
                 });
             }
 
+            
             enhancedTableColumns.unshift({
                 columnName: 'date',
                 columnDescription: `The date of the event in YYYY-MM-DD format. Can be null if no date is available.`,
@@ -924,8 +931,8 @@ export const textToTableTool = tool(
                 const csvContent = [columnNames.join(','), ...csvRows].join('\n');
                 
                 // Generate a unique filename based on timestamp
-                const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-                const csvFilename = `data/text_to_table_${timestamp}.csv`;
+                // const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+                const csvFilename = `data/${params.tableTitle}.csv`;
                 
                 // Save the CSV file
                 await writeFile.invoke({

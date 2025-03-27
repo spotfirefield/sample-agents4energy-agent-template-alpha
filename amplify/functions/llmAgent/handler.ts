@@ -66,6 +66,9 @@ Today's date is ${new Date().toLocaleDateString()}.
 Create intermediate files to store your planned actions, thoughts and work. Use the writeFile tool to create these files. 
 Store them in the 'intermediateFiles' directory. After you complete a planned step, record the results in the file.
 
+When creating plots:
+- Try to use existing files for plots if they exist
+
 When creating reports:
 - Use the writeFile tool to create the first draft of the report file
 - Use html formatting for the report by default
