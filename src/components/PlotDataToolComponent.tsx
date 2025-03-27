@@ -30,6 +30,8 @@ interface SeriesData {
     data: string[];
     sourceFile?: string;
     xData?: string[]; // For multi-file datasets
+    tooltipData?: string[]; // Custom tooltip data
+    tooltipColumn?: string; // Name of column used for tooltips
 }
 
 export const PlotDataToolComponent = ({ content, theme, chatSessionId }: { 
@@ -49,6 +51,7 @@ export const PlotDataToolComponent = ({ content, theme, chatSessionId }: {
             column: string;
             label?: string;
             color?: string;
+            tooltipColumn?: string;
         }>;
         dataRows?: Array<any>;
         error?: string;
@@ -56,6 +59,7 @@ export const PlotDataToolComponent = ({ content, theme, chatSessionId }: {
         availableColumns?: string[];
         isMultiSource?: boolean;
         sourceFiles?: string[];
+        tooltipColumn?: string;
     } | null>(null);
     const [error, setError] = React.useState<boolean>(false);
     const [errorMessage, setErrorMessage] = React.useState<string>('');
@@ -166,8 +170,84 @@ export const PlotDataToolComponent = ({ content, theme, chatSessionId }: {
         processData();
     }, [plotData, parseCSV]);
 
+    // Declare a type for chart dataset
+    interface ChartDataset {
+        label: string;
+        data: (number | null)[];
+        backgroundColor: string;
+        borderColor: string;
+        borderWidth: number;
+        pointBackgroundColor: string;
+        tension: number;
+        yAxisID?: string; // Add yAxisID property for multi-axis support
+        sourceFile?: string;
+        spanGaps?: boolean;
+        tooltipData?: string[];
+        tooltipColumn?: string;
+    }
+
     // Prepare chart data from multiple sources or direct data
     const chartData = React.useMemo(() => {
+        // If we have csvData and need to extract specific columns
+        if (csvData && plotData?.xAxisColumn && plotData.yAxisColumns && plotData.yAxisColumns.length > 0) {
+            const xValues = csvData.map(row => row[plotData.xAxisColumn || ''] || '');
+            
+            // Print sample of the CSV data for debugging
+            console.log('CSV data sample:', csvData.slice(0, 2));
+            console.log('Available columns in CSV:', csvData.length > 0 ? Object.keys(csvData[0]) : []);
+            
+            console.log('Creating chart with columns:', { 
+                xAxisColumn: plotData.xAxisColumn, 
+                yAxisColumns: plotData.yAxisColumns,
+                xValuesCount: xValues.length,
+                csvDataCount: csvData.length
+            });
+            
+            const datasets = plotData.yAxisColumns.map((col, index) => {
+                // Check if the column actually exists in the data
+                const columnExists = csvData.length > 0 && col.column in csvData[0];
+                if (!columnExists) {
+                    console.warn(`Column "${col.column}" not found in CSV data. Available columns:`, 
+                        csvData.length > 0 ? Object.keys(csvData[0]) : []);
+                }
+                
+                const dataPoints = csvData.map(row => {
+                    // Get the numeric value, parse it correctly
+                    const rawValue = row[col.column];
+                    if (rawValue === undefined) {
+                        console.warn(`Value for column "${col.column}" is undefined in row:`, row);
+                        return 0;
+                    }
+                    const value = parseFloat(rawValue);
+                    return isNaN(value) ? 0 : value;
+                });
+                
+                console.log(`Column data for "${col.column}":`, { 
+                    label: col.label, 
+                    dataPoints: dataPoints.slice(0, 5), // Just show first 5 for debugging
+                    columnName: col.column,
+                    exists: columnExists
+                });
+                
+                return {
+                    label: col.label || col.column,
+                    data: dataPoints,
+                    backgroundColor: col.color || seriesColors[index % seriesColors.length] + '66',
+                    borderColor: col.color || seriesColors[index % seriesColors.length],
+                    borderWidth: 2,
+                    pointBackgroundColor: col.color || seriesColors[index % seriesColors.length],
+                    tension: 0.1,
+                    // Set the Y axis ID for this dataset - first dataset uses left axis, others use right
+                    yAxisID: index === 0 ? 'y' : 'y1'
+                };
+            });
+            
+            return {
+                labels: xValues,
+                datasets: datasets
+            };
+        }
+        
         // If we have plotData with series already prepared
         if (plotData?.series && plotData.xAxis?.data) {
             // Check if this is multi-file data
@@ -190,6 +270,15 @@ export const PlotDataToolComponent = ({ content, theme, chatSessionId }: {
                             return seriesIndex >= 0 ? Number(series.data[seriesIndex]) || 0 : null;
                         });
                         
+                        // Also align tooltip data to the common x-axis
+                        const alignedTooltipData = commonXLabels.map(xValue => {
+                            if (!series.xData || !series.tooltipData) {
+                                return undefined;
+                            }
+                            const seriesIndex = series.xData.findIndex((x: string) => x === xValue);
+                            return seriesIndex >= 0 ? series.tooltipData[seriesIndex] : undefined;
+                        });
+                        
                         return {
                             label: series.label || `Series ${index + 1}`,
                             data: alignedData,
@@ -201,13 +290,15 @@ export const PlotDataToolComponent = ({ content, theme, chatSessionId }: {
                             // Allow gaps in line for missing data points
                             spanGaps: true,
                             // Show source file in tooltip
-                            sourceFile: series.sourceFile
+                            sourceFile: series.sourceFile,
+                            tooltipData: alignedTooltipData,
+                            tooltipColumn: series.tooltipColumn
                         };
                     })
                 };
             }
             
-            // Single file with multiple series (original code)
+            // Single file with multiple series
             return {
                 labels: plotData.xAxis.data,
                 datasets: plotData.series.map((series, index) => ({
@@ -218,25 +309,9 @@ export const PlotDataToolComponent = ({ content, theme, chatSessionId }: {
                     borderWidth: 2,
                     pointBackgroundColor: series.color || seriesColors[index % seriesColors.length],
                     tension: 0.1,
-                    sourceFile: series.sourceFile
-                }))
-            };
-        }
-        
-        // If we have csvData and need to extract specific columns
-        if (csvData && plotData?.xAxisColumn && plotData.yAxisColumns) {
-            const xValues = csvData.map(row => row[plotData.xAxisColumn || ''] || '');
-            
-            return {
-                labels: xValues,
-                datasets: plotData.yAxisColumns.map((col, index) => ({
-                    label: col.label || col.column,
-                    data: csvData.map(row => Number(row[col.column]) || 0),
-                    backgroundColor: col.color || seriesColors[index % seriesColors.length] + '66', // Add transparency
-                    borderColor: col.color || seriesColors[index % seriesColors.length],
-                    borderWidth: 2,
-                    pointBackgroundColor: col.color || seriesColors[index % seriesColors.length],
-                    tension: 0.1
+                    sourceFile: series.sourceFile,
+                    tooltipData: series.tooltipData,
+                    tooltipColumn: series.tooltipColumn
                 }))
             };
         }
@@ -248,94 +323,128 @@ export const PlotDataToolComponent = ({ content, theme, chatSessionId }: {
         };
     }, [plotData, csvData, seriesColors]);
 
-    // Declare a type for chart dataset
-    interface ChartDataset {
-        label: string;
-        data: (number | null)[];
-        backgroundColor: string;
-        borderColor: string;
-        borderWidth: number;
-        pointBackgroundColor: string;
-        tension: number;
-        sourceFile?: string;
-        spanGaps?: boolean;
-    }
-
-    // Update chart options to show sourceFile in tooltips
-    const chartOptions = React.useMemo(() => ({
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: {
-            legend: {
-                position: 'top' as const,
-                display: (chartData.datasets?.length || 0) > 1, // Only show legend when multiple series
-            },
-            title: {
-                display: true,
-                text: plotData?.title || 'Data Plot',
-                font: {
-                    size: 16,
-                    weight: 'bold' as const
-                }
-            },
-            tooltip: {
-                enabled: true,
-                backgroundColor: theme.palette.grey[800],
-                titleFont: {
-                    size: 14
+    // Update chart options to show custom tooltips
+    const chartOptions = React.useMemo(() => {
+        // Determine if we need dual y-axes
+        const needsDualAxes = chartData.datasets && chartData.datasets.length > 1;
+        
+        console.log('Chart needs dual axes:', needsDualAxes, 'with datasets:', chartData.datasets?.length);
+        
+        const options: any = {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    position: 'top' as const,
+                    display: true, // Always show legend when there are multiple series
                 },
-                bodyFont: {
-                    size: 13
+                title: {
+                    display: true,
+                    text: plotData?.title || 'Data Plot',
+                    font: {
+                        size: 16,
+                        weight: 'bold' as const
+                    }
                 },
-                padding: 10,
-                cornerRadius: 4,
-                callbacks: {
-                    afterBody: (tooltipItems: any[]) => {
-                        const item = tooltipItems[0];
-                        if (!item) return '';
-                        
-                        const dataset = chartData.datasets[item.datasetIndex] as ChartDataset;
-                        if (dataset.sourceFile) {
-                            return `Source: ${dataset.sourceFile.split('/').pop()}`;
+                tooltip: {
+                    enabled: true,
+                    backgroundColor: theme.palette.grey[800],
+                    titleFont: {
+                        size: 14
+                    },
+                    bodyFont: {
+                        size: 13
+                    },
+                    padding: 10,
+                    cornerRadius: 4,
+                    callbacks: {
+                        afterBody: (tooltipItems: any[]) => {
+                            const item = tooltipItems[0];
+                            if (!item) return '';
+                            
+                            const dataset = chartData.datasets[item.datasetIndex] as ChartDataset;
+                            const tooltipLines = [];
+                            
+                            // Show source file information if available
+                            if (dataset.sourceFile) {
+                                tooltipLines.push(`Source: ${dataset.sourceFile.split('/').pop()}`);
+                            }
+                            
+                            // Show custom tooltip data if available
+                            if (dataset.tooltipData && dataset.tooltipData[item.dataIndex]) {
+                                const tooltipValue = dataset.tooltipData[item.dataIndex];
+                                const tooltipLabel = dataset.tooltipColumn || 'Info';
+                                tooltipLines.push(`${tooltipLabel}: ${tooltipValue}`);
+                            }
+                            
+                            return tooltipLines.join('\n');
                         }
-                        return '';
                     }
-                }
-            }
-        },
-        scales: {
-            x: {
-                title: {
-                    display: true,
-                    text: plotData?.xAxis?.label || 'X',
-                    font: {
-                        size: 14,
-                        weight: 'bold' as const
-                    }
-                },
-                grid: {
-                    display: true,
-                    color: theme.palette.grey[200]
                 }
             },
-            y: {
+            scales: {
+                x: {
+                    title: {
+                        display: true,
+                        text: plotData?.xAxis?.label || 'X',
+                        font: {
+                            size: 14,
+                            weight: 'bold' as const
+                        }
+                    },
+                    grid: {
+                        display: true,
+                        color: theme.palette.grey[200]
+                    }
+                },
+                y: {
+                    type: 'linear',
+                    display: true,
+                    position: 'left',
+                    title: {
+                        display: true,
+                        text: needsDualAxes && plotData?.yAxisColumns && plotData.yAxisColumns.length > 0
+                            ? (plotData.yAxisColumns[0].label || plotData.yAxisColumns[0].column)
+                            : 'Value',
+                        font: {
+                            size: 14,
+                            weight: 'bold' as const
+                        }
+                    },
+                    grid: {
+                        display: true,
+                        color: theme.palette.grey[200]
+                    }
+                }
+            }
+        };
+        
+        // Add right y-axis if we need dual axes
+        if (needsDualAxes && plotData?.yAxisColumns && plotData.yAxisColumns.length > 1) {
+            options.scales.y1 = {
+                type: 'linear',
+                display: true,
+                position: 'right',
                 title: {
                     display: true,
-                    text: plotData?.series && plotData.series.length === 1 
-                        ? plotData.series[0].label 
-                        : 'Value',
+                    text: plotData.yAxisColumns[1].label || plotData.yAxisColumns[1].column,
                     font: {
                         size: 14,
                         weight: 'bold' as const
                     }
                 },
                 grid: {
-                    display: true,
-                    color: theme.palette.grey[200]
-                }
-            }
+                    drawOnChartArea: false // only want the grid lines for one axis to show up
+                },
+            };
+            
+            console.log('Added secondary Y axis for:', plotData.yAxisColumns[1].column);
+        } else {
+            console.log('No secondary Y axis needed');
         }
-    }), [plotData, theme, chartData.datasets?.length, chartData.datasets]);
+        
+        return options;
+    }, [plotData, theme, chartData.datasets?.length, chartData.datasets]);
 
     // Render the appropriate chart based on plotType
     const renderChart = () => {

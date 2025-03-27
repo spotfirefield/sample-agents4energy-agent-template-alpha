@@ -33,15 +33,18 @@ const plotDataToolSchema = z.object({
         filePath: z.string().describe("The path to the CSV file for this series"),
         xAxisColumn: z.string().describe("The name of the column to use for the x-axis in this file"),
         yAxisColumn: z.string().describe("The name of the column to use for the y-axis in this file"),
+        tooltipColumn: z.string().optional().describe("Optional column whose values will be shown in tooltips"),
         label: z.string().optional().describe("Custom label for this data series"),
         color: z.string().optional().describe("Optional color for this data series (hex code or named color)")
     })).optional().describe("Advanced configuration for multiple data series from different files"),
     xAxisColumn: z.string().optional().describe("The name of the column to use for the x-axis (when using a single file)"),
     yAxisColumns: z.array(z.object({
         column: z.string().describe("The name of the column to use for the y-axis"),
+        tooltipColumn: z.string().optional().describe("Optional column whose values will be shown in tooltips"),
         label: z.string().optional().describe("Custom label for this data series"),
         color: z.string().optional().describe("Optional color for this data series (hex code or named color)")
     })).or(z.string()).optional().describe("The column(s) to plot on the y-axis for a single file. Can be a single column name or an array of column objects."),
+    tooltipColumn: z.string().optional().describe("Optional column whose values will be shown in tooltips for all series (can be overridden per series)"),
     plotType: z.enum(["line", "scatter", "bar"]).optional().default("line").describe("The type of plot to create"),
     title: z.string().optional().describe("Optional title for the plot"),
     xAxisLabel: z.string().optional().describe("Optional label for the x-axis"),
@@ -49,7 +52,7 @@ const plotDataToolSchema = z.object({
 });
 
 export const plotDataTool = tool(
-    async ({ filePaths, dataSeries, xAxisColumn, yAxisColumns, plotType = "line", title, xAxisLabel, yAxisLabel }) => {
+    async ({ filePaths, dataSeries, xAxisColumn, yAxisColumns, plotType = "line", title, xAxisLabel, yAxisLabel, tooltipColumn }) => {
         try {
             // Handle the case where we have dataSeries already defined (multiple files, advanced config)
             if (dataSeries && dataSeries.length > 0) {
@@ -80,6 +83,7 @@ export const plotDataTool = tool(
                             filePath,
                             xAxisColumn,
                             yAxisColumn: yAxisColumns,
+                            tooltipColumn,
                             label: fileBaseName
                         };
                     }
@@ -94,6 +98,7 @@ export const plotDataTool = tool(
                         filePath,
                         xAxisColumn,
                         yAxisColumn,
+                        tooltipColumn,
                         label: fileBaseName
                     };
                 });
@@ -103,7 +108,7 @@ export const plotDataTool = tool(
             
             // Single file case - use the original implementation
             const singleFilePath = normalizedFilePaths[0];
-            return await processSingleFile(singleFilePath, xAxisColumn, yAxisColumns, plotType, title, xAxisLabel, yAxisLabel);
+            return await processSingleFile(singleFilePath, xAxisColumn, yAxisColumns, plotType, title, xAxisLabel, yAxisLabel, tooltipColumn);
         } catch (error: any) {
             return JSON.stringify({
                 error: `Error processing plot data: ${error.message}`,
@@ -121,13 +126,16 @@ Example usage:
 - Plot temperature vs time from a weather data CSV
 - Compare monthly sales for multiple products in a single chart
 - Visualize data from multiple CSV files in a single plot
+- Display additional information in tooltips using the tooltipColumn parameter
 
 For multiple data series from the same file:
 - Provide an array of objects for yAxisColumns to plot multiple columns against the same x-axis
+- Optionally specify a tooltipColumn for each series to show custom information in tooltips
 
 For multiple data series from different files:
 - Provide an array of file paths to the filePaths parameter
 - OR use the dataSeries parameter for more control over how each file's data is plotted
+- Use tooltipColumn to specify which column should appear in tooltips
 
 The tool supports line, scatter, and bar plots.
 `,
@@ -143,24 +151,27 @@ interface DataPoint {
         label: string;
         color?: string;
         value: string;
+        tooltip?: string;
     }>;
 }
 
 interface MultiFileDataPoint {
     x: string;
     y: string;
+    tooltip?: string;
 }
 
 interface SeriesConfig {
     filePath: string;
     xAxisColumn: string;
     yAxisColumn: string;
+    tooltipColumn?: string;
     label?: string;
     color?: string;
 }
 
 // Helper function to process a single file
-async function processSingleFile(filePath: string, xAxisColumn?: string, yAxisColumns?: any, plotType: string = "line", title?: string, xAxisLabel?: string, yAxisLabel?: string) {
+async function processSingleFile(filePath: string, xAxisColumn?: string, yAxisColumns?: any, plotType: string = "line", title?: string, xAxisLabel?: string, yAxisLabel?: string, tooltipColumn?: string) {
     // Read the CSV file
     const fileContent = await readFile.invoke({ filename: filePath });
     const fileData = JSON.parse(fileContent);
@@ -221,21 +232,45 @@ async function processSingleFile(filePath: string, xAxisColumn?: string, yAxisCo
         index: headers.indexOf(yCol.column),
         column: yCol.column,
         label: yCol.label || yCol.column,
-        color: yCol.color
+        color: yCol.color,
+        tooltipColumn: yCol.tooltipColumn || tooltipColumn
     }));
+
+    // Add tooltip column indices if specified
+    const tooltipIndices: { [columnName: string]: number } = {};
+    
+    // Process the main tooltipColumn if specified
+    if (tooltipColumn && headers.includes(tooltipColumn)) {
+        tooltipIndices[tooltipColumn] = headers.indexOf(tooltipColumn);
+    }
+    
+    // Process per-series tooltip columns
+    for (const yCol of normalizedYColumns) {
+        if (yCol.tooltipColumn && headers.includes(yCol.tooltipColumn)) {
+            tooltipIndices[yCol.tooltipColumn] = headers.indexOf(yCol.tooltipColumn);
+        }
+    }
 
     // Extract data points
     const dataRows = lines.slice(1)
         .filter((line: string) => line.trim()) // Skip empty lines
         .map((line: string) => {
             const values = line.split(',').map((v: string) => v.trim());
+            
+            // Extract tooltip data for each row
+            const tooltipData: { [column: string]: string } = {};
+            Object.entries(tooltipIndices).forEach(([column, index]) => {
+                tooltipData[column] = values[index] || '';
+            });
+            
             return {
                 x: values[xIndex],
                 y: yIndices.map(y => ({ 
                     column: y.column,
                     label: y.label,
                     color: y.color,
-                    value: values[y.index] 
+                    value: values[y.index],
+                    tooltip: y.tooltipColumn ? tooltipData[y.tooltipColumn] : undefined
                 }))
             };
         }) as DataPoint[];
@@ -266,13 +301,16 @@ async function processSingleFile(filePath: string, xAxisColumn?: string, yAxisCo
             column: col.column,
             color: col.color,
             data: dataRows.map((p: DataPoint) => p.y[idx].value),
+            tooltipData: dataRows.map((p: DataPoint) => p.y[idx].tooltip),
             sourceFile: filePath,
-            xData: xAxisData // Add xData for consistency with multi-file case
+            xData: xAxisData, // Add xData for consistency with multi-file case
+            tooltipColumn: col.tooltipColumn || tooltipColumn
         })),
         xAxisColumn: finalXAxisColumn,
         yAxisColumns: normalizedYColumns,
         dataRows,
-        sourceFiles: [filePath]
+        sourceFiles: [filePath],
+        tooltipColumn
     });
 }
 
@@ -285,7 +323,7 @@ async function processMultipleFiles(dataSeries: SeriesConfig[], plotType: string
     
     // Process each file in the dataSeries
     for (const series of dataSeries) {
-        const { filePath, xAxisColumn, yAxisColumn, label, color } = series;
+        const { filePath, xAxisColumn, yAxisColumn, label, color, tooltipColumn } = series;
         
         // Read the CSV file
         const fileContent = await readFile.invoke({ filename: filePath });
@@ -332,19 +370,36 @@ async function processMultipleFiles(dataSeries: SeriesConfig[], plotType: string
             });
         }
 
+        // Validate tooltip column if specified
+        if (tooltipColumn && !headers.includes(tooltipColumn)) {
+            return JSON.stringify({
+                error: `Tooltip column "${tooltipColumn}" not found in file ${filePath}`,
+                availableColumns: headers,
+                suggestion: "Check column names in each file"
+            });
+        }
+
         // Get column indices
         const xIndex = headers.indexOf(xAxisColumn);
         const yIndex = headers.indexOf(yAxisColumn);
+        const tooltipIndex = tooltipColumn ? headers.indexOf(tooltipColumn) : -1;
 
         // Extract data points
         const dataRows = lines.slice(1)
             .filter((line: string) => line.trim()) // Skip empty lines
             .map((line: string) => {
                 const values = line.split(',').map((v: string) => v.trim());
-                return {
+                const dataPoint: MultiFileDataPoint = {
                     x: values[xIndex],
                     y: values[yIndex]
                 };
+                
+                // Add tooltip data if available
+                if (tooltipIndex >= 0) {
+                    dataPoint.tooltip = values[tooltipIndex];
+                }
+                
+                return dataPoint;
             }) as MultiFileDataPoint[];
 
         // Validate data points
@@ -365,8 +420,10 @@ async function processMultipleFiles(dataSeries: SeriesConfig[], plotType: string
             column: yAxisColumn,
             color,
             data: dataRows.map((p: MultiFileDataPoint) => p.y),
+            tooltipData: dataRows.map((p: MultiFileDataPoint) => p.tooltip),
             xData: xAxisData, // Keep original x data for each series
-            sourceFile: filePath
+            sourceFile: filePath,
+            tooltipColumn
         });
     }
 

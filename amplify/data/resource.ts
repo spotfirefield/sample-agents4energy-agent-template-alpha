@@ -18,13 +18,15 @@ export const llmAgentFunction = defineFunction({
   entry: '../functions/llmAgent/handler.ts',
   timeoutSeconds: 900,
   environment: {
-    // MODEL_ID: 'us.anthropic.claude-3-5-sonnet-20241022-v2:0'
+    // AGENT_MODEL_ID: 'us.anthropic.claude-3-5-sonnet-20241022-v2:0'
     AGENT_MODEL_ID: 'us.anthropic.claude-3-5-haiku-20241022-v1:0',
     
     // MODEL_ID: 'us.anthropic.claude-3-sonnet-20240229-v1:0',
     // MODEL_ID: 'us.amazon.nova-pro-v1:0'
     // TEXT_TO_TABLE_MODEL_ID: 'us.amazon.nova-pro-v1:0'
-    TEXT_TO_TABLE_MODEL_ID: 'us.anthropic.claude-3-5-haiku-20241022-v1:0',
+    // TEXT_TO_TABLE_MODEL_ID: 'us.anthropic.claude-3-5-haiku-20241022-v1:0',
+    // TEXT_TO_TABLE_MODEL_ID: 'amazon.nova-lite-v1:0',
+    TEXT_TO_TABLE_MODEL_ID: 'anthropic.claude-3-haiku-20240307-v1:0',
   }
 });
 
