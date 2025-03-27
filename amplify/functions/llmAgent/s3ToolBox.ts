@@ -142,7 +142,7 @@ async function listS3Objects(prefix: string) {
     }
 }
 
-async function readS3Object(key: string) {
+export async function readS3Object(key: string) {
     const s3Client = getS3Client();
     const bucketName = getBucketName();
     
@@ -962,7 +962,7 @@ export const textToTableTool = tool(
         This tool converts unstructured text files into a structured table format.
         Provide a regex pattern to select files and define the columns you want in the table.
         This tool is best used when you need to extract structured data from a text file, and not when you need to extract a table from a table (like when processing csv files).
-        
+
         File pattern examples:
         - ".*\\.txt$" - all text files
         - "data/.*" - all files in the data directory

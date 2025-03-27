@@ -15,6 +15,7 @@ import { useFileSystem } from '@/contexts/FileSystemContext';
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { stringifyLimitStringLength } from '../../utils/langChainUtils';
+import { PlotDataToolComponent } from './PlotDataToolComponent';
 
 // Text to Table Tool Component - extracted to avoid conditional hooks
 const TextToTableToolComponent = ({ content, theme }: { 
@@ -731,6 +732,9 @@ const ChatMessage = (params: {
                     break;
                 case 'textToTableTool':
                     return <TextToTableToolComponent content={params.message.content} theme={theme} />;
+                    break;
+                case 'plotDataTool':
+                    return <PlotDataToolComponent content={params.message.content} theme={theme} chatSessionId={params.message.chatSessionId || ''} />;
                     break;
                 default:
                     return <>
