@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Box, TextField, Button, List, ListItem, Typography, CircularProgress } from '@mui/material';
-
+import { Box, TextField, Button, List, ListItem, Typography, CircularProgress, Fab } from '@mui/material';
+import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
 
 import { combineAndSortMessages, sendMessage } from '../../utils/amplifyUtils';
 import { Message } from '../../utils/types';
@@ -28,6 +28,7 @@ const ChatBox = (params: {
   const messagesPerPage = 20;
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
+  const [isScrolledToBottom, setIsScrolledToBottom] = useState(true);
 
   //Subscribe to the chat messages for the garden
   useEffect(() => {
@@ -100,7 +101,34 @@ const ChatBox = (params: {
     if (container.scrollTop < 100 && hasMoreMessages && !isLoadingMore) {
       loadMoreMessages();
     }
+    
+    // In column-reverse layout, we're at bottom when scrollTop is 0
+    const isAtBottom = container.scrollTop === 0;
+    setIsScrolledToBottom(isAtBottom);
   }, [hasMoreMessages, isLoadingMore, loadMoreMessages]);
+
+  const scrollToBottom = useCallback(() => {
+    if (messagesContainerRef.current) {
+      messagesContainerRef.current.scrollTo({
+        top: messagesContainerRef.current.scrollHeight,
+        behavior: 'smooth'
+      });
+      // Update isScrolledToBottom after scrolling
+      setIsScrolledToBottom(true);
+    }
+  }, []);
+
+  // Auto-scroll to bottom when new messages arrive
+  useEffect(() => {
+    if (messagesContainerRef.current && messages.length > 0) {
+      const container = messagesContainerRef.current;
+      const isNearBottom = Math.abs(container.scrollHeight - container.scrollTop - container.clientHeight) < 100;
+      
+      if (isNearBottom) {
+        scrollToBottom();
+      }
+    }
+  }, [messages, scrollToBottom]);
 
   //Subscribe to the response stream chunks for the garden
   useEffect(() => {
@@ -191,7 +219,8 @@ const ChatBox = (params: {
       height: '100%',
       display: 'flex',
       flexDirection: 'column',
-      overflowY: 'hidden'
+      overflowY: 'hidden',
+      position: 'relative'
     }}>
       <Box 
         ref={messagesContainerRef}
@@ -224,23 +253,27 @@ const ChatBox = (params: {
           <div ref={messagesEndRef} />
         </List>
       </Box>
-      {messages.length === 0 &&
-        <Box sx={{ textAlign: 'center', margin: '8px 0' }}>
-          <Typography variant="h5">How can I help you?</Typography>
-          <List>
-            {defaultPrompts.map((prompt, index) => (
-              <ListItem key={index}>
-                <Button
-                  onClick={() => handleSend(prompt)}
-                >
-                  {prompt}
-                </Button>
-              </ListItem>
-            ))}
-          </List>
-        </Box>
-      }
-      <Box sx={{ mt: 'auto' }}>
+      <Box sx={{ position: 'relative' }}>
+        {!isScrolledToBottom && (
+          <Fab
+            color="primary"
+            size="small"
+            onClick={scrollToBottom}
+            sx={{
+              position: 'absolute',
+              bottom: '100%',
+              right: 16,
+              marginBottom: 2,
+              zIndex: 1400,
+              opacity: 0.8,
+              '&:hover': {
+                opacity: 1
+              }
+            }}
+          >
+            <KeyboardArrowDownIcon />
+          </Fab>
+        )}
         <TextField
           fullWidth
           multiline
@@ -256,9 +289,9 @@ const ChatBox = (params: {
           disabled={isLoading}
           sx={{
             position: 'relative', 
-            zIndex: 1400, // Ensure higher than drawer
+            zIndex: 1400,
             '& .MuiInputBase-root': {
-              backgroundColor: 'white' // Ensure opaque background
+              backgroundColor: 'white'
             }
           }}
         />
@@ -270,7 +303,7 @@ const ChatBox = (params: {
             marginTop: '8px', 
             width: '100%',
             position: 'relative',
-            zIndex: 1400, // Ensure higher than drawer
+            zIndex: 1400,
             overflow: 'hidden',
             ...(isLoading && {
               '&::after': {

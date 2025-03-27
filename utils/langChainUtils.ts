@@ -32,12 +32,16 @@ export function getLangChainMessageTextContent(message: HumanMessage | AIMessage
 }
 
 export function stringifyLimitStringLength(obj: any, maxLength: number = 200) {
-    return stringify(obj, (key, value) => {
-        if (typeof value === 'string' && value.length > maxLength) {
-            return value.substring(0, maxLength) + '...';
-        }
-        return value;
-    }, 2);
+    return stringify(
+        JSON.parse(
+            JSON.stringify(obj, (key: string, value: any) => {
+                if (typeof value === 'string' && value.length > maxLength) {
+                    return value.substring(0, maxLength) + '...';
+                }
+                return value;
+            })
+        )
+    );
 }
 
 export const publishMessage = async (props: PublishMessageCommandInput) => {

@@ -65,7 +65,8 @@ If you don't have the access to the information you need, make a reasonable gues
 Use markdown formatting for your responses (like **bold**, *italic*, ## headings, etc.), but DO NOT wrap your response in markdown code blocks.
 Today's date is ${new Date().toLocaleDateString()}.
 
-Create intermediate files to store your planned actions, thoughts and work. Use the writeFile tool to create these files. Store them in the 'intermediateFiles' directory.
+Create intermediate files to store your planned actions, thoughts and work. Use the writeFile tool to create these files. 
+Store them in the 'intermediateFiles' directory. After you complete a planned step, record the results in the file.
 
 When creating reports:
 - Use the writeFile tool to create the first draft of the report file

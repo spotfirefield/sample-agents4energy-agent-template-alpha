@@ -927,12 +927,67 @@ export const textToTableTool = tool(
                 return 0;
             });
 
-            return JSON.stringify({
-                messageContentType: 'tool_table',
-                columns: enhancedTableColumns.map(c => c.columnName),
-                data: tableRows,
-                matchedFileCount: matchingFiles.length
-            });
+            // Save the table as CSV
+            try {
+                // Create CSV header from column names
+                const columnNames = enhancedTableColumns.map(c => c.columnName);
+                if (params.includeFilePath !== false) {
+                    columnNames.push('filePath');
+                }
+                
+                // Convert table rows to CSV format
+                const csvRows = tableRows.map(row => {
+                    return columnNames.map(colName => {
+                        const value = row[colName];
+                        // Handle null/undefined values
+                        if (value === null || value === undefined) {
+                            return '';
+                        }
+                        // Convert to string and escape special characters
+                        const stringValue = String(value);
+                        // Escape quotes and wrap in quotes if contains comma, newline, or quote
+                        if (stringValue.includes(',') || stringValue.includes('\n') || stringValue.includes('"')) {
+                            return `"${stringValue.replace(/"/g, '""')}"`;
+                        }
+                        return stringValue;
+                    }).join(',');
+                });
+                
+                // Combine header and rows
+                const csvContent = [columnNames.join(','), ...csvRows].join('\n');
+                
+                // Generate a unique filename based on timestamp
+                const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+                const csvFilename = `data/text_to_table_${timestamp}.csv`;
+                
+                // Save the CSV file
+                await writeFile.invoke({
+                    filename: csvFilename,
+                    content: csvContent
+                });
+                
+                // Add CSV file info to the response
+                return JSON.stringify({
+                    messageContentType: 'tool_table',
+                    columns: enhancedTableColumns.map(c => c.columnName),
+                    data: tableRows,
+                    matchedFileCount: matchingFiles.length,
+                    csvFile: {
+                        filename: csvFilename,
+                        rowCount: tableRows.length
+                    }
+                });
+            } catch (error: any) {
+                console.error('Error saving CSV file:', error);
+                // Continue with the original response even if CSV saving fails
+                return JSON.stringify({
+                    messageContentType: 'tool_table',
+                    columns: enhancedTableColumns.map(c => c.columnName),
+                    data: tableRows,
+                    matchedFileCount: matchingFiles.length,
+                    csvError: `Failed to save CSV file: ${error.message}`
+                });
+            }
         } catch (error: any) {
             console.error('Error in textToTableTool:', error);
             return JSON.stringify({
