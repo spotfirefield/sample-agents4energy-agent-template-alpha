@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Box, TextField, Button, List, ListItem, Typography, CircularProgress, Fab } from '@mui/material';
+import { Box, TextField, Button, List, ListItem, Typography, CircularProgress, Fab, Paper } from '@mui/material';
 import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
 
 import { combineAndSortMessages, sendMessage } from '../../utils/amplifyUtils';
@@ -12,6 +12,32 @@ import { defaultPrompts } from '@/constants/defaultPrompts';
 import { generateClient } from "aws-amplify/data";
 import { type Schema } from "@/../amplify/data/resource";
 const amplifyClient = generateClient<Schema>();
+
+const DefaultPrompts = ({ onSelectPrompt }: { onSelectPrompt: (prompt: string) => void }) => {
+  return (
+    <Box sx={{ p: 2, display: 'flex', flexDirection: 'column', gap: 2 }}>
+      <Typography variant="h6" sx={{ mb: 2 }}>
+        Try these prompts to get started:
+      </Typography>
+      {defaultPrompts.map((prompt, index) => (
+        <Paper
+          key={index}
+          onClick={() => onSelectPrompt(prompt)}
+          sx={{
+            p: 2,
+            cursor: 'pointer',
+            '&:hover': {
+              backgroundColor: 'action.hover',
+            },
+            transition: 'background-color 0.2s',
+          }}
+        >
+          <Typography>{prompt}</Typography>
+        </Paper>
+      ))}
+    </Box>
+  );
+};
 
 const ChatBox = (params: {
   chatSessionId: string,
@@ -239,19 +265,26 @@ const ChatBox = (params: {
             <CircularProgress size={24} />
           </Box>
         )}
-        <List>
-          {[
-            ...messages,
-            ...(streamChunkMessage ? [streamChunkMessage] : [])
-          ].map((message) => (
-            <ListItem key={message.id}>
-              <ChatMessage
-                message={message}
-              />
-            </ListItem>
-          ))}
-          <div ref={messagesEndRef} />
-        </List>
+        {messages.length === 0 ? (
+          <DefaultPrompts onSelectPrompt={(prompt) => {
+            setUserInput(prompt);
+            handleSend(prompt);
+          }} />
+        ) : (
+          <List>
+            {[
+              ...messages,
+              ...(streamChunkMessage ? [streamChunkMessage] : [])
+            ].map((message) => (
+              <ListItem key={message.id}>
+                <ChatMessage
+                  message={message}
+                />
+              </ListItem>
+            ))}
+            <div ref={messagesEndRef} />
+          </List>
+        )}
       </Box>
       <Box sx={{ position: 'relative' }}>
         {!isScrolledToBottom && (
