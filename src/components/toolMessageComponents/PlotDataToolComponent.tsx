@@ -270,7 +270,7 @@ export const PlotDataToolComponent = ({ content, theme, chatSessionId }: {
                             return numValue.toLocaleString();
                         }
                     },
-                    min: 0.1 // Set minimum value to avoid log(0) error
+                    // min: 0.1 // Set minimum value to avoid log(0) error
                 }
             }
         };
