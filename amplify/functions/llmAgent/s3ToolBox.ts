@@ -6,30 +6,6 @@ import { ChatBedrockConverse } from "@langchain/aws";
 import { getConfiguredAmplifyClient } from '../../../utils/amplifyUtils';
 import { publishResponseStreamChunk } from "../graphql/mutations";
 
-const userInputToolSchema = z.object({
-    title: z.string(),
-    description: z.string(),
-    buttonTextBeforeClick: z.string(),
-    buttonTextAfterClick: z.string(),
-})
-
-export const userInputTool = tool(
-    async (userInputToolArgs) => {
-
-        return {
-            ...userInputToolArgs,
-        }
-    },
-    {
-        name: "userInputTool",
-        description: `
-Use this tool to send emails or add items to a work management system.
-The messages should never request information.
-They should only inform someone besides the user about an action they should take (including to review an item from the chat).
-`,
-        schema: userInputToolSchema,
-    }
-);
 
 // Schema for listing files
 const listFilesSchema = z.object({
@@ -499,22 +475,6 @@ export const writeFile = tool(
             const prefix = getChatSessionPrefix();
             const s3Key = path.posix.join(prefix, targetPath);
             
-            // Check if file already exists
-            try {
-                await readS3Object(s3Key);
-                return JSON.stringify({ 
-                    error: `File ${filename} already exists. Use the updateFile tool to modify existing files.`,
-                    suggestion: "Use the updateFile tool with operation 'replace' to modify the existing file."
-                });
-            } catch (error: any) {
-                // If error is NoSuchKey, file doesn't exist and we can proceed
-                if (error.name !== 'NoSuchKey') {
-                    return JSON.stringify({ 
-                        error: `Error checking if file exists: ${error.message}`
-                    });
-                }
-            }
-            
             // Create parent "directory" keys if needed
             const dirPath = path.dirname(targetPath);
             if (dirPath !== '.') {
@@ -538,7 +498,7 @@ export const writeFile = tool(
     },
     {
         name: "writeFile",
-        description: "Writes content to a new file in session storage. If the file already exists, use the updateFile tool instead. Global files (global/filename) are read-only and cannot be written to.",
+        description: "Writes content to a new file or overwrites an existing file in session storage. Global files (global/filename) are read-only and cannot be written to.",
         schema: writeFileSchema,
     }
 );
@@ -813,7 +773,7 @@ export const textToTableTool = tool(
 
             // Process each file with concurrency limit
             const tableRows = [];
-            const concurrencyLimit = 2; // Process x files at a time
+            const concurrencyLimit = 5; // Process x files at a time
             let processedCount = 0;
             
             // Process files in batches to avoid hitting limits
@@ -1001,6 +961,7 @@ export const textToTableTool = tool(
         description: `
         This tool converts unstructured text files into a structured table format.
         Provide a regex pattern to select files and define the columns you want in the table.
+        This tool is best used when you need to extract structured data from a text file, and not when you need to extract a table from a table (like when processing csv files).
         
         File pattern examples:
         - ".*\\.txt$" - all text files
@@ -1223,6 +1184,10 @@ async function findFilesMatchingPattern(basePrefix: string, pattern: string): Pr
     return matchingFiles;
 }
 
-
-
-
+export const s3FileManagementTools = [
+    listFiles,
+    readFile,
+    writeFile,
+    updateFile,
+    textToTableTool
+]
