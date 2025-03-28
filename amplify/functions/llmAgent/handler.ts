@@ -52,11 +52,14 @@ export const handler: Schema["invokeAgent"]["functionHandler"] = async (event, c
             ...s3FileManagementTools
         ]
 
+        
+
         const agent = createReactAgent({
             llm: agentModel,
             tools: agentTools,
         });
 
+        
         let systemMessageContent = `
 You are a helpful llm agent showing a demo workflow. 
 If you don't have the access to the information you need, generate the required information and save it in the data directory.
@@ -160,6 +163,18 @@ When you receive a "No files found" error from textToTableTool:
                                 chunkIndex = 0 //reset the stream chunk index
                                 const streamChunk = streamEvent.data.output.messages[0] as ToolMessage | AIMessageChunk
                                 console.log('received tool or agent message:\n', stringifyLimitStringLength(streamChunk))
+                                console.log(streamEvent.name, streamChunk.content, typeof streamChunk.content === 'string')
+                                if (streamEvent.name === 'tools' && typeof streamChunk.content === 'string' && streamChunk.content.toLowerCase().includes("error")) {
+                                    console.log('Generating error message for tool call')
+                                    const toolCallMessage = streamEvent.data.input.messages[streamEvent.data.input.messages.length - 1] as AIMessageChunk
+                                    const toolCallArgs = toolCallMessage.tool_calls?.[0].args
+                                    const toolName = streamChunk.lc_kwargs.name
+                                    const selectedToolSchema = agentTools.find(tool => tool.name === toolName)?.schema
+                                    const zodError = selectedToolSchema?.safeParse(toolCallArgs)
+                                    console.log({toolCallMessage, toolCallArgs, toolName, selectedToolSchema, zodError, formattedZodError: zodError?.error?.format()})
+                                    
+                                    streamChunk.content += '\n\n' + stringify(zodError?.error?.format())
+                                }
 
                                 // Check if this is a table result from textToTableTool and format it properly
                                 if (streamChunk instanceof ToolMessage && streamChunk.name === 'textToTableTool') {
@@ -178,6 +193,8 @@ When you receive a "No files found" error from textToTableTool:
                                         console.error("Error processing textToTableTool result:", error);
                                     }
                                 }
+
+                                
 
                                 await publishMessage({
                                     chatSessionId: event.arguments.chatSessionId,
