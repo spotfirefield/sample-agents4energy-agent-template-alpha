@@ -1,4 +1,3 @@
-
 import { stringify } from 'yaml';
 import { HumanMessage, AIMessage, AIMessageChunk, ToolMessage, BaseMessage, MessageContentText } from "@langchain/core/messages";
 import { Message } from './types';
@@ -26,17 +25,23 @@ export function getLangChainMessageTextContent(message: HumanMessage | AIMessage
         })
     }
 
-    return messageTextContent
+    // Ensure we never return an empty string - return a space instead
+    // This prevents "The text field in the ContentBlock object is blank" errors with Bedrock
+    return messageTextContent.trim() === '' ? " " : messageTextContent
 
 }
 
 export function stringifyLimitStringLength(obj: any, maxLength: number = 200) {
-    return stringify(obj, (key, value) => {
-        if (typeof value === 'string' && value.length > maxLength) {
-            return value.substring(0, maxLength) + '...';
-        }
-        return value;
-    }, 2);
+    return stringify(
+        JSON.parse(
+            JSON.stringify(obj, (key: string, value: any) => {
+                if (typeof value === 'string' && value.length > maxLength) {
+                    return value.substring(0, maxLength) + '...';
+                }
+                return value;
+            })
+        )
+    );
 }
 
 export const publishMessage = async (props: PublishMessageCommandInput) => {
@@ -49,7 +54,7 @@ export const publishMessage = async (props: PublishMessageCommandInput) => {
     let input: APITypes.CreateChatMessageInput = {
         chatSessionId: props.chatSessionId,
         content: {
-            text: messageTextContent || ""
+            text: messageTextContent || " "
         },
         owner: props.owner,
         toolCallId: "",
@@ -99,19 +104,22 @@ export const publishMessage = async (props: PublishMessageCommandInput) => {
 }
 
 export const convertAmplifyChatMessageToLangChainMessage = (message: Message) => {
+    // Ensure message content is never empty
+    const content = message.content?.text?.trim() ? message.content.text : "<empty message text content>";
+
     switch (message.role) {
         case 'human':
             return new HumanMessage({
-                content: message.content?.text || " ",
+                content: content,
             })
         case 'ai':
             return new AIMessage({
-                content: message.content?.text || " ",
+                content: content,
                 tool_calls: JSON.parse(message.toolCalls || '[]')
             })
         case 'tool':
             return new ToolMessage({
-                content: message.content?.text || " ",
+                content: content,
                 tool_call_id: message.toolCallId || "",
                 name: message.toolName || "no tool name supplied"
             })
@@ -136,9 +144,9 @@ export const getLangChainChatMessagesStartingWithHumanMessage = async (chatSessi
         ? []
         : chatSessionMessages.slice(firstHumanMessageIndex);
 
-    const langChainMessagesStartingWithFirstHumanMessage = messagesStartingWithFirstHumanMessage.map(message => convertAmplifyChatMessageToLangChainMessage(message))
-
-    // console.log('langChainMessagesStartingWithFirstHumanMessage: ', langChainMessagesStartingWithFirstHumanMessage)
+    const langChainMessagesStartingWithFirstHumanMessage = messagesStartingWithFirstHumanMessage.map(
+        message => convertAmplifyChatMessageToLangChainMessage(message)
+    )
 
     return langChainMessagesStartingWithFirstHumanMessage
 }
