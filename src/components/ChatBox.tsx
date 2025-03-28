@@ -233,6 +233,9 @@ const ChatBox = (params: {
         setStreamChunkMessage(undefined);
         setResponseStreamChunks([]);
         
+        // Ensure loading state is reset
+        setIsLoading(false);
+        
         // Scroll to the input box
         messagesContainerRef.current?.scrollTo({
           top: messagesContainerRef.current.scrollHeight,
@@ -240,9 +243,11 @@ const ChatBox = (params: {
         });
       } catch (error) {
         console.error('Error deleting messages:', error);
+        // Ensure loading state is reset even if there's an error
+        setIsLoading(false);
       }
     }
-  }, [messages, setUserInput, setStreamChunkMessage, setResponseStreamChunks, setMessages]);
+  }, [messages, setUserInput, setStreamChunkMessage, setResponseStreamChunks, setMessages, setIsLoading]);
 
   const handleSend = useCallback(async (userMessage: string) => {
     if (userMessage.trim()) {
