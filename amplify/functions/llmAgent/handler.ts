@@ -120,7 +120,7 @@ When you receive a "No files found" error from textToTableTool:
             ].filter((message): message is BaseMessage => message !== undefined)
         }
 
-        console.log('input:\n', stringify(input))
+        console.log('input:\n', stringifyLimitStringLength(input))
 
         const agentEventStream = agent.streamEvents(
             input,

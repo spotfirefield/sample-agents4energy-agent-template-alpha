@@ -30,6 +30,7 @@ export const PlotDataToolComponent = ({ content, theme, chatSessionId }: {
     const [plotData, setPlotData] = React.useState<{
         messageContentType?: string;
         filePath?: string;
+        filePaths?: string;
         plotType?: 'line' | 'scatter' | 'bar';
         title?: string;
         xAxis?: { label?: string; data?: string[] };
@@ -40,11 +41,13 @@ export const PlotDataToolComponent = ({ content, theme, chatSessionId }: {
             data: string[];
         }>;
         xAxisColumn?: string;
+        xAxisLabel?: string;
         yAxisColumns?: Array<{
             column: string;
             label?: string;
             color?: string;
         }>;
+        yAxisLabel?: string;
         dataRows?: Array<any>;
         error?: string;
         suggestion?: string;
@@ -121,43 +124,68 @@ export const PlotDataToolComponent = ({ content, theme, chatSessionId }: {
 
     // Process the data when plotData is updated
     React.useEffect(() => {
-        if (!plotData?.filePath) return;
+        console.log('plotData updated:', plotData);
+        
+        // Handle both filePath and filePaths
+        const filePathToUse = plotData?.filePath || plotData?.filePaths;
+        
+        if (!filePathToUse) {
+            console.log('No filePath/filePaths in plotData, skipping fetch');
+            return;
+        }
 
         const processData = async () => {
             setLoading(true);
             try {
-                // Get file content directly from HTML instead of fetching
-                const fileContentEl = document.querySelector(`.file-content[data-file="${plotData.filePath}"]`);
-                if (fileContentEl) {
-                    const fileContent = fileContentEl.textContent || '';
-                    if (!fileContent) {
-                        throw new Error('Empty file content');
-                    }
+                // Construct the full S3 key with the session prefix
+                const fullPath = `chatSessionArtifacts/sessionId=${chatSessionId}/${filePathToUse}`;
+                console.log('Getting URL for:', fullPath);
 
-                    // Parse CSV data
-                    const { headers, rows } = parseCSV(fileContent);
-                    setCsvData(rows);
-                    console.log('Parsed CSV data from DOM:', rows);
-                } else {
-                    // Fall back to using the data already in plotData.series
-                    if (plotData.series && plotData.series.length > 0) {
-                        console.log('Using pre-parsed data from plotData');
-                        setCsvData([]); // Just set to empty array to indicate success
-                    } else {
-                        throw new Error('Cannot find file content in the DOM and no pre-parsed data available');
-                    }
+                // Use Amplify Storage's getUrl to fetch the file 
+                const result = await getUrl({
+                    path: fullPath,
+                });
+                
+                // Fetch CSV data from the obtained URL
+                const response = await fetch(result.url.toString());
+                if (!response.ok) {
+                    throw new Error(`Failed to fetch data: ${response.statusText}`);
+                }
+                
+                // Get the file content as text
+                const fileContent = await response.text();
+                if (!fileContent) {
+                    throw new Error('Empty file content');
+                }
+                
+                // Parse CSV data
+                const { headers, rows } = parseCSV(fileContent);
+                setCsvData(rows);
+                console.log('Parsed CSV data from S3:', rows);
+                
+                // Fall back to using the data already in plotData.series if parsing fails
+                if (rows.length === 0 && plotData.series && plotData.series.length > 0) {
+                    console.log('Using pre-parsed data from plotData');
+                    setCsvData([]); // Just set to empty array to indicate success
                 }
             } catch (error: any) {
                 console.error('Error processing data:', error);
-                setError(true);
-                setErrorMessage(`Error processing data: ${error.message}`);
+                
+                // Try to fall back to using the data already in plotData.series
+                if (plotData.series && plotData.series.length > 0) {
+                    console.log('Failed to fetch from S3, using pre-parsed data from plotData');
+                    setCsvData([]); // Just set to empty array to indicate success
+                } else {
+                    setError(true);
+                    setErrorMessage(`Error processing data: ${error.message}`);
+                }
             } finally {
                 setLoading(false);
             }
         };
 
         processData();
-    }, [plotData, parseCSV]);
+    }, [plotData, parseCSV, chatSessionId]);
 
     // Prepare chart data from CSV or directly from plotData.series
     const chartData = React.useMemo(() => {
@@ -237,7 +265,7 @@ export const PlotDataToolComponent = ({ content, theme, chatSessionId }: {
                 x: {
                     title: {
                         display: true,
-                        text: plotData?.xAxis?.label || 'X',
+                        text: plotData?.xAxisLabel || plotData?.xAxis?.label || 'X',
                         font: {
                             size: 14,
                             weight: 'bold'
@@ -249,10 +277,10 @@ export const PlotDataToolComponent = ({ content, theme, chatSessionId }: {
                     }
                 },
                 y: {
-                    type: 'logarithmic',
+                    type: plotData?.plotType === 'scatter' ? 'linear' : 'logarithmic',
                     title: {
                         display: true,
-                        text: plotData?.series?.[0]?.label || 'Y',
+                        text: plotData?.yAxisLabel || plotData?.series?.[0]?.label || 'Y',
                         font: {
                             size: 14,
                             weight: 'bold'
@@ -276,7 +304,7 @@ export const PlotDataToolComponent = ({ content, theme, chatSessionId }: {
         };
         
         return options;
-    }, [plotData?.title, plotData?.xAxis?.label, plotData?.series?.[0]?.label, theme, chartData.datasets?.length]);
+    }, [plotData?.title, plotData?.xAxis?.label, plotData?.xAxisLabel, plotData?.yAxisLabel, plotData?.series?.[0]?.label, plotData?.plotType, theme, chartData.datasets?.length]);
 
     // Render the appropriate chart based on plotType
     const renderChart = () => {
