@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { Box, TextField, Button, List, ListItem, Typography, CircularProgress } from '@mui/material';
-
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { Box, TextField, Button, List, ListItem, Typography, CircularProgress, Fab, Paper } from '@mui/material';
+import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
 
 import { combineAndSortMessages, sendMessage } from '../../utils/amplifyUtils';
 import { Message } from '../../utils/types';
@@ -13,6 +13,32 @@ import { generateClient } from "aws-amplify/data";
 import { type Schema } from "@/../amplify/data/resource";
 const amplifyClient = generateClient<Schema>();
 
+const DefaultPrompts = ({ onSelectPrompt }: { onSelectPrompt: (prompt: string) => void }) => {
+  return (
+    <Box sx={{ p: 2, display: 'flex', flexDirection: 'column', gap: 2 }}>
+      <Typography variant="h6" sx={{ mb: 2 }}>
+        Try these prompts to get started:
+      </Typography>
+      {defaultPrompts.map((prompt, index) => (
+        <Paper
+          key={index}
+          onClick={() => onSelectPrompt(prompt)}
+          sx={{
+            p: 2,
+            cursor: 'pointer',
+            '&:hover': {
+              backgroundColor: 'action.hover',
+            },
+            transition: 'background-color 0.2s',
+          }}
+        >
+          <Typography>{prompt}</Typography>
+        </Paper>
+      ))}
+    </Box>
+  );
+};
+
 const ChatBox = (params: {
   chatSessionId: string,
 }) => {
@@ -22,6 +48,13 @@ const ChatBox = (params: {
   const [streamChunkMessage, setStreamChunkMessage] = useState<Message>();
   const [userInput, setUserInput] = useState<string>('');
   const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [isLoadingMore, setIsLoadingMore] = useState<boolean>(false);
+  const [hasMoreMessages, setHasMoreMessages] = useState<boolean>(true);
+  const [page, setPage] = useState<number>(1);
+  const messagesPerPage = 20;
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
+  const [isScrolledToBottom, setIsScrolledToBottom] = useState(true);
 
   //Subscribe to the chat messages for the garden
   useEffect(() => {
@@ -33,19 +66,14 @@ const ChatBox = (params: {
         }
       }).subscribe({
         next: ({ items }) => {
-          // console.log('Received new messages: ', items)
-          //If any of the items have the isResposeComplete flag set to true, set isLoading to false
-          // const isResponseComplete = items.some((message) => message.responseComplete)
-          // if (isResponseComplete) setIsLoading(false)
           setMessages((prevMessages) => {
-            const sortedMessages = combineAndSortMessages(prevMessages, items)
+            // Only take the most recent messagesPerPage messages
+            const recentMessages = items.slice(-messagesPerPage);
+            const sortedMessages = combineAndSortMessages(prevMessages, recentMessages)
             if (sortedMessages[sortedMessages.length - 1] && sortedMessages[sortedMessages.length - 1].responseComplete) {
               setIsLoading(false)
             }
-            // else {
-            //   setIsLoading(true)
-            // }
-            console.log('sortedMessages: ', sortedMessages)
+            setHasMoreMessages(items.length > messagesPerPage);
             return sortedMessages
           })
           setStreamChunkMessage(undefined)
@@ -56,12 +84,77 @@ const ChatBox = (params: {
       return () => {
         messagesSub.unsubscribe();
       };
-
     }
 
     messageSubscriptionHandler()
-
   }, [params.chatSessionId])
+
+  const loadMoreMessages = useCallback(async () => {
+    if (isLoadingMore || !hasMoreMessages) return;
+    
+    setIsLoadingMore(true);
+    const nextPage = page + 1;
+    
+    try {
+      const result = await amplifyClient.models.ChatMessage.list({
+        filter: {
+          chatSessionId: { eq: params.chatSessionId }
+        }
+      });
+      
+      if (result.data) {
+        // Get the next page of messages
+        const startIndex = (nextPage - 1) * messagesPerPage;
+        const endIndex = startIndex + messagesPerPage;
+        const newMessages = result.data.slice(startIndex, endIndex);
+        
+        setMessages(prevMessages => {
+          const combinedMessages = [...prevMessages, ...newMessages];
+          return combineAndSortMessages(prevMessages, combinedMessages);
+        });
+        setHasMoreMessages(endIndex < result.data.length);
+        setPage(nextPage);
+      }
+    } catch (error) {
+      console.error('Error loading more messages:', error);
+    } finally {
+      setIsLoadingMore(false);
+    }
+  }, [page, hasMoreMessages, isLoadingMore, params.chatSessionId]);
+
+  const handleScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
+    const container = e.currentTarget;
+    if (container.scrollTop < 100 && hasMoreMessages && !isLoadingMore) {
+      loadMoreMessages();
+    }
+    
+    // In column-reverse layout, we're at bottom when scrollTop is 0
+    const isAtBottom = container.scrollTop === 0;
+    setIsScrolledToBottom(isAtBottom);
+  }, [hasMoreMessages, isLoadingMore, loadMoreMessages]);
+
+  const scrollToBottom = useCallback(() => {
+    if (messagesContainerRef.current) {
+      messagesContainerRef.current.scrollTo({
+        top: messagesContainerRef.current.scrollHeight,
+        behavior: 'smooth'
+      });
+      // Update isScrolledToBottom after scrolling
+      setIsScrolledToBottom(true);
+    }
+  }, []);
+
+  // Auto-scroll to bottom when new messages arrive
+  useEffect(() => {
+    if (messagesContainerRef.current && messages.length > 0) {
+      const container = messagesContainerRef.current;
+      const isNearBottom = Math.abs(container.scrollHeight - container.scrollTop - container.clientHeight) < 100;
+      
+      if (isNearBottom) {
+        scrollToBottom();
+      }
+    }
+  }, [messages, scrollToBottom]);
 
   //Subscribe to the response stream chunks for the garden
   useEffect(() => {
@@ -84,7 +177,7 @@ const ChatBox = (params: {
             }
 
             //Only set the chunk message if the inital chunk is defined. This prevents the race condition between the message and the chunk
-            if (prevChunks[0]) {
+            if (prevChunks[0] || true) {
               setStreamChunkMessage({
                 id: 'streamChunkMessage',
                 role: 'ai',
@@ -109,7 +202,47 @@ const ChatBox = (params: {
     responseStreamChunkSubscriptionHandler()
   }, [params.chatSessionId])
 
-
+  // Update function to handle message regeneration
+  const handleRegenerateMessage = useCallback(async (messageId: string, messageText: string) => {
+    // Find the index of the message to regenerate
+    const messageIndex = messages.findIndex(msg => msg.id === messageId);
+    
+    if (messageIndex !== -1) {
+      // Set the message text as the current input
+      setUserInput(messageText);
+      
+      try {
+        // Find the clicked message and all subsequent messages to delete from API
+        const messagesToDelete = messages.filter((_, index) => index >= messageIndex);
+        
+        // Delete messages from the API
+        for (const msgToDelete of messagesToDelete) {
+          if (msgToDelete.id) {
+            await amplifyClient.models.ChatMessage.delete({
+              id: msgToDelete.id
+            });
+            console.log(`Deleted message ${msgToDelete.id} from API`);
+          }
+        }
+        
+        // Remove messages from UI
+        const messagesBeforeRegeneratedMessage = messages.filter((_, index) => index < messageIndex);
+        setMessages(messagesBeforeRegeneratedMessage);
+        
+        // Clear streaming message if any
+        setStreamChunkMessage(undefined);
+        setResponseStreamChunks([]);
+        
+        // Scroll to the input box
+        messagesContainerRef.current?.scrollTo({
+          top: messagesContainerRef.current.scrollHeight,
+          behavior: 'smooth'
+        });
+      } catch (error) {
+        console.error('Error deleting messages:', error);
+      }
+    }
+  }, [messages, setUserInput, setStreamChunkMessage, setResponseStreamChunks, setMessages]);
 
   const handleSend = useCallback(async (userMessage: string) => {
     if (userMessage.trim()) {
@@ -152,46 +285,69 @@ const ChatBox = (params: {
       height: '100%',
       display: 'flex',
       flexDirection: 'column',
-      overflowY: 'hidden'
+      overflowY: 'hidden',
+      position: 'relative'
     }}>
-      <Box sx={{
-        flex: 1,
-        overflowY: 'auto',
-        flexDirection: 'column-reverse',
-        display: 'flex',
-        mb: 2,
-        position: 'relative'
-      }}>
-        <List>
-          {[
-            ...messages,
-            ...(streamChunkMessage ? [streamChunkMessage] : [])
-          ].map((message) => (
-            <ListItem key={message.id}>
-              <ChatMessage
-                message={message}
-              />
-            </ListItem>
-          ))}
-        </List>
-      </Box>
-      {messages.length === 0 &&
-        <Box sx={{ textAlign: 'center', margin: '8px 0' }}>
-          <Typography variant="h5">How can I help you?</Typography>
+      <Box 
+        ref={messagesContainerRef}
+        onScroll={handleScroll}
+        sx={{
+          flex: 1,
+          overflowY: 'auto',
+          flexDirection: 'column-reverse',
+          display: 'flex',
+          mb: 2,
+          position: 'relative'
+        }}
+      >
+        {isLoadingMore && (
+          <Box sx={{ display: 'flex', justifyContent: 'center', p: 2 }}>
+            <CircularProgress size={24} />
+          </Box>
+        )}
+        {messages.length === 0 ? (
+          <DefaultPrompts onSelectPrompt={(prompt) => {
+            setUserInput(prompt);
+            handleSend(prompt);
+          }} />
+        ) : (
           <List>
-            {defaultPrompts.map((prompt, index) => (
-              <ListItem key={index}>
-                <Button
-                  onClick={() => handleSend(prompt)}
-                >
-                  {prompt}
-                </Button>
+            {[
+              ...messages,
+              ...(streamChunkMessage ? [streamChunkMessage] : [])
+            ].map((message) => (
+              <ListItem key={message.id}>
+                <ChatMessage
+                  message={message}
+                  onRegenerateMessage={message.role === 'human' ? handleRegenerateMessage : undefined}
+                />
               </ListItem>
             ))}
+            <div ref={messagesEndRef} />
           </List>
-        </Box>
-      }
-      <Box sx={{ mt: 'auto' }}>
+        )}
+      </Box>
+      <Box sx={{ position: 'relative' }}>
+        {!isScrolledToBottom && (
+          <Fab
+            color="primary"
+            size="small"
+            onClick={scrollToBottom}
+            sx={{
+              position: 'absolute',
+              bottom: '100%',
+              right: 16,
+              marginBottom: 2,
+              zIndex: 1400,
+              opacity: 0.8,
+              '&:hover': {
+                opacity: 1
+              }
+            }}
+          >
+            <KeyboardArrowDownIcon />
+          </Fab>
+        )}
         <TextField
           fullWidth
           multiline
@@ -205,6 +361,13 @@ const ChatBox = (params: {
             }
           }}
           disabled={isLoading}
+          sx={{
+            position: 'relative', 
+            zIndex: 1400,
+            '& .MuiInputBase-root': {
+              backgroundColor: 'white'
+            }
+          }}
         />
         <Button 
           variant="contained" 
@@ -214,6 +377,7 @@ const ChatBox = (params: {
             marginTop: '8px', 
             width: '100%',
             position: 'relative',
+            zIndex: 1400,
             overflow: 'hidden',
             ...(isLoading && {
               '&::after': {

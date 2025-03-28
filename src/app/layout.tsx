@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Inter } from "next/font/google";
 
 import { AppRouterCacheProvider } from '@mui/material-nextjs/v15-appRouter';
 import { ThemeProvider } from '@mui/material/styles';
@@ -12,23 +12,17 @@ import TopNavBar from '@/components/TopNavBar';
 
 import "./globals.css";
 import "@aws-amplify/ui-react/styles.css";
+import { FileSystemProvider } from "@/contexts/FileSystemContext";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+const inter = Inter({
   subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
+  variable: "--font-inter",
 });
 
 export const metadata: Metadata = {
   title: "Digital Assistant",
   description: "A digital assistant for your needs",
 };
-
-
 
 export default function RootLayout({
   children,
@@ -38,29 +32,31 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
+        className={`${inter.variable} antialiased`}
       >
         <AppRouterCacheProvider>
           <ConfigureAmplify />
-          <Providers>
-            <ThemeProvider theme={theme}>
-              <CssBaseline />
-              <div style={{ 
-                display: 'flex', 
-                flexDirection: 'column', 
-                height: '100vh', 
-                overflow: 'hidden' 
-              }}>
-                <TopNavBar />
+          <FileSystemProvider>
+            <Providers>
+              <ThemeProvider theme={theme}>
+                <CssBaseline />
                 <div style={{ 
-                  flexGrow: 1, 
-                  overflow: 'auto' 
+                  display: 'flex', 
+                  flexDirection: 'column', 
+                  height: '100vh', 
+                  overflow: 'hidden' 
                 }}>
-                  {children}
+                  <TopNavBar />
+                  <div style={{ 
+                    flexGrow: 1, 
+                    overflow: 'auto' 
+                  }}>
+                    {children}
+                  </div>
                 </div>
-              </div>
-            </ThemeProvider>
-          </Providers>
+              </ThemeProvider>
+            </Providers>
+          </FileSystemProvider>
         </AppRouterCacheProvider>
       </body>
     </html>

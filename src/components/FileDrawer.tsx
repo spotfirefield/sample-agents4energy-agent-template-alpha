@@ -1,0 +1,514 @@
+import React, { useState } from 'react';
+import { 
+  Drawer, 
+  Box, 
+  Typography, 
+  IconButton, 
+  Divider,
+  useTheme,
+  useMediaQuery,
+  Paper,
+  Stack,
+  Button,
+  Snackbar,
+  Alert,
+  CircularProgress,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions
+} from '@mui/material';
+import { uploadData, remove } from '@aws-amplify/storage';
+import FolderIcon from '@mui/icons-material/Folder';
+import CloseIcon from '@mui/icons-material/Close';
+import UploadFileIcon from '@mui/icons-material/UploadFile';
+
+import FileExplorer from './FileExplorer';
+import FilePreview from './FilePreview';
+import { useFileSystem } from '@/contexts/FileSystemContext';
+
+interface FileItem {
+  key: string;
+  path: string;
+  isFolder: boolean;
+  name: string;
+  url?: string;
+  children?: FileItem[];
+}
+
+interface FileDrawerProps {
+  open: boolean;
+  onClose: () => void;
+  chatSessionId: string;
+  variant?: 'temporary' | 'persistent' | 'permanent';
+}
+
+const FileDrawer: React.FC<FileDrawerProps> = ({ 
+  open, 
+  onClose, 
+  chatSessionId
+}) => {
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
+  
+  // State for the currently selected file to preview
+  const [selectedFile, setSelectedFile] = useState<FileItem | null>(null);
+  
+  // Upload state
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadMessage, setUploadMessage] = useState('');
+  const [showUploadMessage, setShowUploadMessage] = useState(false);
+  
+  // Use the file system context to trigger refreshes
+  const { refreshFiles } = useFileSystem();
+  
+  // Delete state
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [fileToDelete, setFileToDelete] = useState<FileItem | null>(null);
+  
+  // Handle file selection for preview
+  const handleFileSelect = (file: FileItem) => {
+    if (!file.isFolder) {
+      setSelectedFile(file);
+    }
+  };
+
+  const handleDeleteClick = (file: FileItem) => {
+    setFileToDelete(file);
+    setDeleteDialogOpen(true);
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!fileToDelete) return;
+
+    try {
+      await remove({ path: fileToDelete.key });
+      setSelectedFile(null);
+      refreshFiles();
+      setDeleteDialogOpen(false);
+      setFileToDelete(null);
+      setUploadMessage('File deleted successfully');
+      setShowUploadMessage(true);
+    } catch (error) {
+      console.error('Error deleting file:', error);
+      setUploadMessage('Failed to delete file. Please try again.');
+      setShowUploadMessage(true);
+    }
+  };
+
+  // Handle file upload
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = event.target.files;
+    if (!files || files.length === 0) return;
+
+    setIsUploading(true);
+    setUploadMessage('Uploading files...');
+    setShowUploadMessage(true);
+
+    try {
+      const uploadPromises = Array.from(files).map(async (file) => {
+        const key = `chatSessionArtifacts/sessionId=${chatSessionId}/${file.name}`;
+        
+        await uploadData({
+          path: key,
+          data: file,
+          options: {
+            contentType: file.type
+          }
+        });
+      });
+
+      await Promise.all(uploadPromises);
+      setUploadMessage('Files uploaded successfully');
+      
+      // Add a small delay before refreshing to allow S3 to propagate changes
+      setTimeout(() => {
+        refreshFiles();
+      }, 1000);
+    } catch (error) {
+      console.error('Error uploading files:', error);
+      setUploadMessage('Failed to upload files. Please try again.');
+    } finally {
+      setIsUploading(false);
+      // Clear the file input
+      event.target.value = '';
+    }
+  };
+
+  // Handle closing upload message
+  const handleCloseUploadMessage = () => {
+    setShowUploadMessage(false);
+  };
+  
+  // Adjust drawer width for non-mobile screens to allow chat visibility
+  const drawerWidth = isMobile ? '100%' : '45%';
+
+  return (
+    <>
+      {/* Use a fixed position div instead of Drawer for desktop to avoid modal behavior */}
+      {!isMobile && open ? (
+        <Box
+          sx={{
+            position: 'fixed',
+            top: 64, // Start below TopNavBar
+            right: 0,
+            width: drawerWidth,
+            height: 'calc(100% - 64px)',
+            backgroundColor: 'background.paper',
+            boxShadow: '-8px 0 20px rgba(0,0,0,0.1)',
+            zIndex: theme.zIndex.drawer,
+            display: 'flex',
+            flexDirection: 'column',
+            overflow: 'hidden',
+            borderLeft: '1px solid rgba(0,0,0,0.08)',
+          }}
+        >
+          <Box
+            sx={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              p: 1.5,
+              bgcolor: theme.palette.background.paper,
+              color: theme.palette.text.primary,
+              borderBottom: '1px solid rgba(0,0,0,0.08)',
+              boxShadow: '0 2px 4px rgba(0,0,0,0.03)',
+            }}
+          >
+            <Box sx={{ display: 'flex', alignItems: 'center' }}>
+              <FolderIcon sx={{ mr: 1, color: theme.palette.primary.main }} />
+              <Typography variant="h6" fontWeight="500" noWrap>
+                Session Files
+              </Typography>
+            </Box>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <input
+                accept="*/*"
+                style={{ display: 'none' }}
+                id="file-upload"
+                multiple
+                type="file"
+                onChange={handleFileUpload}
+                disabled={isUploading}
+              />
+              <label htmlFor="file-upload">
+                <Button
+                  component="span"
+                  startIcon={<UploadFileIcon />}
+                  variant="contained"
+                  color="primary"
+                  disabled={isUploading}
+                  sx={{ 
+                    backgroundColor: theme.palette.primary.main,
+                    color: theme.palette.primary.contrastText,
+                    '&:hover': {
+                      backgroundColor: theme.palette.primary.dark,
+                    },
+                    '&.Mui-disabled': {
+                      backgroundColor: 'action.disabledBackground',
+                    },
+                    borderRadius: '6px',
+                    textTransform: 'none',
+                    boxShadow: 'none',
+                  }}
+                >
+                  Upload
+                </Button>
+              </label>
+              <IconButton
+                onClick={onClose}
+                sx={{ 
+                  color: theme.palette.text.secondary,
+                  '&:hover': {
+                    backgroundColor: 'rgba(0,0,0,0.04)',
+                  },
+                }}
+                size="small"
+              >
+                <CloseIcon />
+              </IconButton>
+            </Box>
+          </Box>
+          
+          <Divider />
+          
+          <Box sx={{ 
+            height: 'calc(100% - 64px)', // Subtract header height
+            overflow: 'hidden',
+            backgroundColor: theme.palette.background.default,
+          }}>
+            {/* Split view for larger devices using Stack instead of Grid2 */}
+            <Stack 
+              direction="row" 
+              sx={{ height: '100%' }}
+              divider={<Divider orientation="vertical" flexItem />}
+            >
+              <Box sx={{ width: '40%', height: '100%', overflow: 'auto', p: 2, backgroundColor: theme.palette.background.default }}>
+                <FileExplorer 
+                  chatSessionId={chatSessionId} 
+                  onFileSelect={handleFileSelect}
+                />
+              </Box>
+              <Box sx={{ width: '60%', height: '100%', overflow: 'auto', p: 2, backgroundColor: theme.palette.background.paper }}>
+                {selectedFile ? (
+                  <FilePreview
+                    open={!!selectedFile}
+                    onClose={() => setSelectedFile(null)}
+                    fileName={selectedFile.name}
+                    fileUrl={selectedFile.url || ''}
+                    embedded={true}
+                    onDelete={() => handleDeleteClick(selectedFile)}
+                  />
+                ) : (
+                  <Paper 
+                    elevation={0} 
+                    sx={{ 
+                      height: '100%', 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      justifyContent: 'center',
+                      bgcolor: theme.palette.background.paper,
+                      p: 3,
+                      textAlign: 'center',
+                      borderRadius: '8px',
+                      border: '1px dashed rgba(0,0,0,0.12)',
+                    }}
+                  >
+                    <Typography color="textSecondary">
+                      Select a file to preview its contents
+                    </Typography>
+                  </Paper>
+                )}
+              </Box>
+            </Stack>
+          </Box>
+
+          {/* Upload status message */}
+          <Snackbar 
+            open={showUploadMessage} 
+            autoHideDuration={isUploading ? null : 4000}
+            onClose={handleCloseUploadMessage}
+            anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+          >
+            <Alert 
+              onClose={handleCloseUploadMessage} 
+              severity={isUploading ? "info" : "success"} 
+              sx={{ 
+                width: '100%',
+                boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+                borderRadius: '8px',
+              }}
+              icon={isUploading ? <CircularProgress size={20} /> : undefined}
+            >
+              {uploadMessage}
+            </Alert>
+          </Snackbar>
+        </Box>
+      ) : (
+        /* Use the regular Material-UI Drawer for mobile only */
+        <Drawer
+          anchor="right"
+          open={open && isMobile}
+          onClose={onClose}
+          variant="temporary"
+          sx={{
+            width: drawerWidth,
+            flexShrink: 0,
+            '& .MuiDrawer-paper': {
+              width: drawerWidth,
+              boxSizing: 'border-box',
+              top: 64,
+              height: 'calc(100% - 64px)',
+              zIndex: theme.zIndex.drawer,
+              boxShadow: '-8px 0 20px rgba(0,0,0,0.1)',
+              borderLeft: '1px solid rgba(0,0,0,0.08)',
+            },
+          }}
+        >
+          <Box
+            sx={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              p: 1.5,
+              bgcolor: theme.palette.background.paper,
+              color: theme.palette.text.primary,
+              borderBottom: '1px solid rgba(0,0,0,0.08)',
+              boxShadow: '0 2px 4px rgba(0,0,0,0.03)',
+            }}
+          >
+            <Box sx={{ display: 'flex', alignItems: 'center' }}>
+              <FolderIcon sx={{ mr: 1, color: theme.palette.primary.main }} />
+              <Typography variant="h6" fontWeight="500" noWrap>
+                Session Files
+              </Typography>
+            </Box>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <input
+                accept="*/*"
+                style={{ display: 'none' }}
+                id="file-upload-mobile"
+                multiple
+                type="file"
+                onChange={handleFileUpload}
+                disabled={isUploading}
+              />
+              <label htmlFor="file-upload-mobile">
+                <Button
+                  component="span"
+                  startIcon={<UploadFileIcon />}
+                  variant="contained"
+                  color="primary"
+                  disabled={isUploading}
+                  sx={{ 
+                    backgroundColor: theme.palette.primary.main,
+                    color: theme.palette.primary.contrastText,
+                    '&:hover': {
+                      backgroundColor: theme.palette.primary.dark,
+                    },
+                    '&.Mui-disabled': {
+                      backgroundColor: 'action.disabledBackground',
+                    },
+                    borderRadius: '6px',
+                    textTransform: 'none',
+                    boxShadow: 'none',
+                  }}
+                >
+                  Upload
+                </Button>
+              </label>
+              <IconButton
+                onClick={onClose}
+                sx={{ 
+                  color: theme.palette.text.secondary,
+                  '&:hover': {
+                    backgroundColor: 'rgba(0,0,0,0.04)',
+                  },
+                }}
+                size="small"
+              >
+                <CloseIcon />
+              </IconButton>
+            </Box>
+          </Box>
+          
+          <Divider />
+          
+          <Box sx={{ 
+            height: 'calc(100% - 64px)', // Subtract header height
+            overflow: 'hidden',
+            backgroundColor: theme.palette.background.default,
+          }}>
+            {/* Stack view for small devices */}
+            <Box sx={{ height: '100%' }}>
+              {selectedFile ? (
+                // Show file preview with back button on small screens
+                <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+                  <Box sx={{ p: 1.5, borderBottom: '1px solid rgba(0,0,0,0.08)' }}>
+                    <Button 
+                      onClick={() => setSelectedFile(null)} 
+                      startIcon={<FolderIcon />} 
+                      variant="text"
+                      sx={{ 
+                        textTransform: 'none',
+                        color: theme.palette.primary.main,
+                      }}
+                    >
+                      Back to files
+                    </Button>
+                  </Box>
+                  <Box sx={{ flexGrow: 1, overflow: 'auto', p: 2, backgroundColor: theme.palette.background.paper }}>
+                    {selectedFile && (
+                      <FilePreview
+                        open={!!selectedFile}
+                        onClose={() => setSelectedFile(null)}
+                        fileName={selectedFile.name}
+                        fileUrl={selectedFile.url || ''}
+                        embedded={true}
+                        onDelete={() => handleDeleteClick(selectedFile)}
+                      />
+                    )}
+                  </Box>
+                </Box>
+              ) : (
+                // Show file explorer
+                <Box sx={{ height: '100%', overflow: 'auto', p: 2, backgroundColor: theme.palette.background.default }}>
+                  <FileExplorer 
+                    chatSessionId={chatSessionId} 
+                    onFileSelect={handleFileSelect}
+                  />
+                </Box>
+              )}
+            </Box>
+          </Box>
+
+          {/* Upload status message */}
+          <Snackbar 
+            open={showUploadMessage} 
+            autoHideDuration={isUploading ? null : 4000}
+            onClose={handleCloseUploadMessage}
+            anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+          >
+            <Alert 
+              onClose={handleCloseUploadMessage} 
+              severity={isUploading ? "info" : "success"} 
+              sx={{ 
+                width: '100%',
+                boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+                borderRadius: '8px',
+              }}
+              icon={isUploading ? <CircularProgress size={20} /> : undefined}
+            >
+              {uploadMessage}
+            </Alert>
+          </Snackbar>
+        </Drawer>
+      )}
+
+      {/* Delete confirmation dialog */}
+      <Dialog 
+        open={deleteDialogOpen} 
+        onClose={() => setDeleteDialogOpen(false)}
+        PaperProps={{
+          sx: {
+            borderRadius: '8px',
+            boxShadow: '0 8px 24px rgba(0,0,0,0.15)',
+          }
+        }}
+      >
+        <DialogTitle sx={{ borderBottom: '1px solid rgba(0,0,0,0.08)' }}>Delete File</DialogTitle>
+        <DialogContent sx={{ py: 2, mt: 1 }}>
+          <Typography>
+            Are you sure you want to delete <strong>{fileToDelete?.name}</strong>?
+          </Typography>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button 
+            onClick={() => setDeleteDialogOpen(false)}
+            variant="outlined"
+            sx={{ 
+              textTransform: 'none',
+              borderRadius: '6px',
+            }}
+          >
+            Cancel
+          </Button>
+          <Button 
+            onClick={handleDeleteConfirm} 
+            color="error" 
+            variant="contained"
+            sx={{ 
+              textTransform: 'none',
+              borderRadius: '6px',
+              boxShadow: 'none',
+            }}
+          >
+            Delete
+          </Button>
+        </DialogActions>
+      </Dialog>
+    </>
+  );
+};
+
+export default FileDrawer; 
