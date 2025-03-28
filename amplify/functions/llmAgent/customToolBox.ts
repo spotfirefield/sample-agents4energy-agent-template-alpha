@@ -51,12 +51,39 @@ const plotDataToolSchema = z.object({
     yAxisLabel: z.string().optional().describe("Optional label for the y-axis"),
 });
 
+// Helper function to validate CSV file extension
+function validateCsvFileExtension(filePath: string): boolean {
+    return filePath.toLowerCase().endsWith('.csv');
+}
+
 export const plotDataTool = tool(
     async (params) => {
         const { filePaths, dataSeries, xAxisColumn, yAxisColumns, plotType = "line", title, xAxisLabel, yAxisLabel, tooltipColumn } = params
         try {
-            // Handle the case where we have dataSeries already defined (multiple files, advanced config)
+            // Check if file paths have .csv extension
+            if (filePaths) {
+                const paths = Array.isArray(filePaths) ? filePaths : [filePaths];
+                for (const path of paths) {
+                    if (!validateCsvFileExtension(path)) {
+                        return JSON.stringify({
+                            error: `Invalid file extension for "${path}". Only CSV files are supported.`,
+                            suggestion: "Please provide file paths ending with .csv"
+                        });
+                    }
+                }
+            }
+            
+            // Check dataSeries file paths if they exist
             if (dataSeries && dataSeries.length > 0) {
+                for (const series of dataSeries) {
+                    if (!validateCsvFileExtension(series.filePath)) {
+                        return JSON.stringify({
+                            error: `Invalid file extension for "${series.filePath}". Only CSV files are supported.`,
+                            suggestion: "Please provide file paths ending with .csv"
+                        });
+                    }
+                }
+                
                 await processMultipleFiles(dataSeries, plotType, title, xAxisLabel, yAxisLabel);
                 return params;
             }
@@ -125,6 +152,7 @@ export const plotDataTool = tool(
         description: `
 Use this tool to create plots from CSV files with support for multiple data series and multiple files.
 The tool will validate file existence and column names before returning the plot configuration.
+Only CSV files (with .csv extension) are supported.
 
 Example usage:
 - Plot temperature vs time from a weather data CSV

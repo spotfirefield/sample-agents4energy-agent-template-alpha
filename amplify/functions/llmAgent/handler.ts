@@ -67,7 +67,10 @@ Create intermediate files to store your planned actions, thoughts and work. Use 
 Store them in the 'intermediateFiles' directory. After you complete a planned step, record the results in the file.
 
 When creating plots:
-- Try to use existing files for plots if they exist
+- ALWAYS check for and use existing files and data tables before generating new ones
+- If a table has already been generated, reuse that data instead of regenerating it
+- Only generate new data tables if no existing relevant data is available
+- When asked to plot data from a table, look for the specific table mentioned and use that data
 
 When creating reports:
 - Use the writeFile tool to create the first draft of the report file
