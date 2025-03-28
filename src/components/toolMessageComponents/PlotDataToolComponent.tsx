@@ -30,7 +30,14 @@ export const PlotDataToolComponent = ({ content, theme, chatSessionId }: {
     const [plotData, setPlotData] = React.useState<{
         messageContentType?: string;
         filePath?: string;
-        filePaths?: string;
+        filePaths?: string | string[];
+        dataSeries?: Array<{
+            filePath: string;
+            xAxisColumn: string;
+            yAxisColumn: string;
+            label: string;
+            color?: string;
+        }>;
         plotType?: 'line' | 'scatter' | 'bar';
         title?: string;
         xAxis?: { label?: string; data?: string[] };
@@ -126,47 +133,92 @@ export const PlotDataToolComponent = ({ content, theme, chatSessionId }: {
     React.useEffect(() => {
         console.log('plotData updated:', plotData);
         
-        // Handle both filePath and filePaths
-        const filePathToUse = plotData?.filePath || plotData?.filePaths;
+        if (!plotData) {
+            console.log('No plotData, skipping fetch');
+            return;
+        }
         
-        if (!filePathToUse) {
-            console.log('No filePath/filePaths in plotData, skipping fetch');
+        // Get the file paths to process
+        let filePathsArray: string[] = [];
+        
+        // Handle filePaths as string or array
+        if (plotData.filePaths) {
+            if (typeof plotData.filePaths === 'string') {
+                // Handle comma-separated list
+                filePathsArray = plotData.filePaths.split(',').map(path => path.trim());
+            } else if (Array.isArray(plotData.filePaths)) {
+                // Handle array of paths
+                filePathsArray = plotData.filePaths;
+            }
+        } else if (plotData.filePath) {
+            // Handle single filePath
+            filePathsArray = [plotData.filePath];
+        } else if (plotData.dataSeries?.length) {
+            // Extract file paths from dataSeries
+            filePathsArray = plotData.dataSeries.map(series => series.filePath);
+        }
+        
+        if (filePathsArray.length === 0) {
+            console.log('No file paths found in plotData, skipping fetch');
             return;
         }
 
+        console.log('Processing files:', filePathsArray);
+        
         const processData = async () => {
             setLoading(true);
             try {
-                // Construct the full S3 key with the session prefix
-                const fullPath = `chatSessionArtifacts/sessionId=${chatSessionId}/${filePathToUse}`;
-                console.log('Getting URL for:', fullPath);
+                // Fetch and process each file
+                const allRows: Array<{ [key: string]: string }> = [];
+                
+                for (const filePath of filePathsArray) {
+                    // Construct the full S3 key with the session prefix
+                    const fullPath = `chatSessionArtifacts/sessionId=${chatSessionId}/${filePath}`;
+                    console.log('Getting URL for:', fullPath);
 
-                // Use Amplify Storage's getUrl to fetch the file 
-                const result = await getUrl({
-                    path: fullPath,
-                });
-                
-                // Fetch CSV data from the obtained URL
-                const response = await fetch(result.url.toString());
-                if (!response.ok) {
-                    throw new Error(`Failed to fetch data: ${response.statusText}`);
+                    // Use Amplify Storage's getUrl to fetch the file 
+                    const result = await getUrl({
+                        path: fullPath,
+                    });
+                    
+                    // Fetch CSV data from the obtained URL
+                    const response = await fetch(result.url.toString());
+                    if (!response.ok) {
+                        console.warn(`Failed to fetch data from ${filePath}: ${response.statusText}`);
+                        continue; // Try the next file if this one fails
+                    }
+                    
+                    // Get the file content as text
+                    const fileContent = await response.text();
+                    if (!fileContent) {
+                        console.warn(`Empty file content from ${filePath}`);
+                        continue;
+                    }
+                    
+                    // Parse CSV data
+                    const { headers, rows } = parseCSV(fileContent);
+                    console.log(`Parsed CSV data from ${filePath}:`, rows.length, 'rows');
+                    
+                    // Add a source column to identify which file the data came from
+                    const sourceFileName = filePath.split('/').pop() || filePath;
+                    const rowsWithSource = rows.map(row => ({
+                        ...row,
+                        __source: sourceFileName
+                    }));
+                    
+                    // Add rows to the collected data
+                    allRows.push(...rowsWithSource);
                 }
                 
-                // Get the file content as text
-                const fileContent = await response.text();
-                if (!fileContent) {
-                    throw new Error('Empty file content');
-                }
-                
-                // Parse CSV data
-                const { headers, rows } = parseCSV(fileContent);
-                setCsvData(rows);
-                console.log('Parsed CSV data from S3:', rows);
-                
-                // Fall back to using the data already in plotData.series if parsing fails
-                if (rows.length === 0 && plotData.series && plotData.series.length > 0) {
-                    console.log('Using pre-parsed data from plotData');
+                if (allRows.length > 0) {
+                    setCsvData(allRows);
+                    console.log('Combined CSV data from all files:', allRows.length, 'total rows');
+                } else if (plotData.series && plotData.series.length > 0) {
+                    // Fall back to using the data already in plotData.series if no files were loaded
+                    console.log('No CSV data loaded, using pre-parsed data from plotData');
                     setCsvData([]); // Just set to empty array to indicate success
+                } else {
+                    throw new Error('No data could be loaded from any of the specified files');
                 }
             } catch (error: any) {
                 console.error('Error processing data:', error);
@@ -189,8 +241,12 @@ export const PlotDataToolComponent = ({ content, theme, chatSessionId }: {
 
     // Prepare chart data from CSV or directly from plotData.series
     const chartData = React.useMemo(() => {
+        if (!plotData) {
+            return { labels: [], datasets: [] };
+        }
+        
         // If we have plotData with series already prepared
-        if (plotData?.series && plotData.xAxis?.data) {
+        if (plotData.series && plotData.xAxis?.data) {
             return {
                 labels: plotData.xAxis.data,
                 datasets: plotData.series.map((series, index) => ({
@@ -205,22 +261,127 @@ export const PlotDataToolComponent = ({ content, theme, chatSessionId }: {
             };
         }
         
+        // If we have dataSeries format with multiple files and columns
+        if (csvData && plotData.dataSeries?.length) {
+            console.log('Using dataSeries format for chart data');
+            
+            // Group CSV data by source file
+            const dataBySource = csvData.reduce((acc, row) => {
+                const source = row.__source;
+                if (!acc[source]) {
+                    acc[source] = [];
+                }
+                acc[source].push(row);
+                return acc;
+            }, {} as Record<string, Array<{ [key: string]: string }>>);
+            
+            // Find all unique x-axis values across all sources
+            const allFarms = new Set<string>();
+            Object.values(dataBySource).forEach(rows => {
+                rows.forEach(row => {
+                    // Find the x-axis column for this source
+                    const seriesForSource = plotData.dataSeries?.find(
+                        s => row.__source === s.filePath.split('/').pop()
+                    );
+                    if (seriesForSource) {
+                        const farmValue = row[seriesForSource.xAxisColumn];
+                        if (farmValue) {
+                            allFarms.add(farmValue);
+                        }
+                    }
+                });
+            });
+            
+            // Convert to array and sort
+            const labels = Array.from(allFarms).sort();
+            
+            // Create datasets from dataSeries
+            const datasets = plotData.dataSeries.map((series, index) => {
+                const sourceFile = series.filePath.split('/').pop() || '';
+                const sourceRows = dataBySource[sourceFile] || [];
+                
+                // Map farm names to values
+                const data = labels.map(farm => {
+                    const row = sourceRows.find(r => r[series.xAxisColumn] === farm);
+                    return row ? Number(row[series.yAxisColumn]) || 0 : 0;
+                });
+                
+                return {
+                    label: series.label,
+                    data,
+                    backgroundColor: series.color || seriesColors[index % seriesColors.length] + '66', // Add transparency
+                    borderColor: series.color || seriesColors[index % seriesColors.length],
+                    borderWidth: 2,
+                    pointBackgroundColor: series.color || seriesColors[index % seriesColors.length],
+                    tension: 0.1
+                };
+            });
+            
+            return { labels, datasets };
+        }
+        
         // If we have csvData and need to extract specific columns
         if (csvData && plotData?.xAxisColumn && plotData.yAxisColumns) {
-            const xValues = csvData.map(row => row[plotData.xAxisColumn || ''] || '');
+            // Check if we have multiple sources in the data
+            const sources = [...new Set(csvData.map(row => row.__source))];
+            const hasMultipleSources = sources.length > 1;
             
-            return {
-                labels: xValues,
-                datasets: plotData.yAxisColumns.map((col, index) => ({
-                    label: col.label || col.column,
-                    data: csvData.map(row => Number(row[col.column]) || 0),
-                    backgroundColor: col.color || seriesColors[index % seriesColors.length] + '66', // Add transparency
-                    borderColor: col.color || seriesColors[index % seriesColors.length],
-                    borderWidth: 2,
-                    pointBackgroundColor: col.color || seriesColors[index % seriesColors.length],
-                    tension: 0.1
-                }))
-            };
+            if (hasMultipleSources) {
+                console.log('Multiple data sources detected:', sources);
+                
+                // Prepare x-axis values from all sources
+                const allXValues = csvData.map(row => row[plotData.xAxisColumn || ''] || '');
+                
+                // Create datasets by source and column
+                const datasets = [];
+                
+                for (const column of plotData.yAxisColumns) {
+                    for (const source of sources) {
+                        // Filter rows for this source
+                        const sourceRows = csvData.filter(row => row.__source === source);
+                        
+                        // Skip if no rows for this source
+                        if (sourceRows.length === 0) continue;
+                        
+                        // Get a color index based on column and source
+                        const sourceIndex = sources.indexOf(source);
+                        const columnIndex = plotData.yAxisColumns.indexOf(column);
+                        const colorIndex = (columnIndex * sources.length + sourceIndex) % seriesColors.length;
+                        
+                        // Create a dataset for this source and column
+                        datasets.push({
+                            label: `${column.label || column.column} (${source})`,
+                            data: sourceRows.map(row => Number(row[column.column]) || 0),
+                            backgroundColor: column.color || seriesColors[colorIndex] + '66', // Add transparency
+                            borderColor: column.color || seriesColors[colorIndex],
+                            borderWidth: 2,
+                            pointBackgroundColor: column.color || seriesColors[colorIndex],
+                            tension: 0.1
+                        });
+                    }
+                }
+                
+                return {
+                    labels: allXValues,
+                    datasets
+                };
+            } else {
+                // Single source, original behavior
+                const xValues = csvData.map(row => row[plotData.xAxisColumn || ''] || '');
+                
+                return {
+                    labels: xValues,
+                    datasets: plotData.yAxisColumns.map((col, index) => ({
+                        label: col.label || col.column,
+                        data: csvData.map(row => Number(row[col.column]) || 0),
+                        backgroundColor: col.color || seriesColors[index % seriesColors.length] + '66', // Add transparency
+                        borderColor: col.color || seriesColors[index % seriesColors.length],
+                        borderWidth: 2,
+                        pointBackgroundColor: col.color || seriesColors[index % seriesColors.length],
+                        tension: 0.1
+                    }))
+                };
+            }
         }
         
         // Default empty data
@@ -329,7 +490,13 @@ export const PlotDataToolComponent = ({ content, theme, chatSessionId }: {
                             series: plotData?.series?.length || 0,
                             xAxis: plotData?.xAxis?.data?.length || 0,
                             csvData: csvData?.length || 0,
-                            filePath: plotData?.filePath
+                            filePath: plotData?.filePath,
+                            filePaths: plotData?.filePaths ? 
+                                (typeof plotData.filePaths === 'string' ? 
+                                    plotData.filePaths : 
+                                    `${plotData.filePaths.length} files`) :
+                                null,
+                            dataSeries: plotData?.dataSeries?.length || 0
                         })}
                     </Typography>
                 </div>
