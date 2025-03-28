@@ -26,14 +26,14 @@ export const handler: Schema["invokeAgent"]["functionHandler"] = async (event, c
         if (event.arguments.chatSessionId === null) throw new Error("chatSessionId is required");
         if (!event.identity) throw new Error("Event does not contain identity");
         if (!('sub' in event.identity)) throw new Error("Event does not contain user");
-        
+
         // Set the chat session ID for use by the S3 tools
         setChatSessionId(event.arguments.chatSessionId);
-        
+
         // Define the S3 prefix for this chat session (needed for env vars)
         const bucketName = process.env.STORAGE_BUCKET_NAME;
         if (!bucketName) throw new Error("STORAGE_BUCKET_NAME is not set");
-        
+
         const amplifyClient = getConfiguredAmplifyClient();
 
         // This function includes validation to prevent "The text field in the ContentBlock object is blank" errors
@@ -101,9 +101,9 @@ When you receive a "No files found" error from textToTableTool:
 4. For global files, try omitting the 'global/' prefix or using just the distinctive filename part
 5. If all else fails, use a very broad pattern like ".*" to see all files
         `//.replace(/^\s+/gm, '') //This trims the whitespace from the beginning of each line
-        
+
         // If the chatSessionMessages ends with a human message, remove it.
-        if (chatSessionMessages.length > 0 && 
+        if (chatSessionMessages.length > 0 &&
             chatSessionMessages[chatSessionMessages.length - 1] instanceof HumanMessage) {
             chatSessionMessages.pop();
         }
@@ -148,35 +148,78 @@ When you receive a "No files found" error from textToTableTool:
                     // console.log('published chunk response:\n', JSON.stringify(publishChunkResponse, null, 2))
                     if (publishChunkResponse.errors) console.log('Error publishing response chunk:\n', publishChunkResponse.errors)
                     break;
-                case "on_tool_end":
-                case "on_chat_model_end":
-                    chunkIndex = 0 //reset the stream chunk index
-                    const streamChunk = streamEvent.data.output as ToolMessage | AIMessageChunk
-                    console.log('received on chat model end:\n', stringifyLimitStringLength(streamChunk))
-                    
-                    // Check if this is a table result from textToTableTool and format it properly
-                    if (streamChunk instanceof ToolMessage && streamChunk.name === 'textToTableTool') {
-                        try {
-                            const toolResult = JSON.parse(streamChunk.content as string);
-                            if (toolResult.messageContentType === 'tool_table') {
-                                // Attach table data to the message using additional_kwargs which is supported by LangChain
-                                (streamChunk as any).additional_kwargs = {
-                                    tableData: toolResult.data,
-                                    tableColumns: toolResult.columns,
-                                    matchedFileCount: toolResult.matchedFileCount,
-                                    messageContentType: 'tool_table'
-                                };
-                            }
-                        } catch (error) {
-                            console.error("Error processing textToTableTool result:", error);
+                case "on_chain_end":
+                    if (streamEvent.data.output?.messages) {
+                        // console.log('received on chain end:\n', stringifyLimitStringLength(streamEvent.data.output.messages))
+                        switch (streamEvent.name) {
+                            case "tools":
+                            case "agent":
+                                chunkIndex = 0 //reset the stream chunk index
+                                const streamChunk = streamEvent.data.output.messages[0] as ToolMessage | AIMessageChunk
+                                console.log('received tool or agent message:\n', stringifyLimitStringLength(streamChunk))
+
+                                // Check if this is a table result from textToTableTool and format it properly
+                                if (streamChunk instanceof ToolMessage && streamChunk.name === 'textToTableTool') {
+                                    try {
+                                        const toolResult = JSON.parse(streamChunk.content as string);
+                                        if (toolResult.messageContentType === 'tool_table') {
+                                            // Attach table data to the message using additional_kwargs which is supported by LangChain
+                                            (streamChunk as any).additional_kwargs = {
+                                                tableData: toolResult.data,
+                                                tableColumns: toolResult.columns,
+                                                matchedFileCount: toolResult.matchedFileCount,
+                                                messageContentType: 'tool_table'
+                                            };
+                                        }
+                                    } catch (error) {
+                                        console.error("Error processing textToTableTool result:", error);
+                                    }
+                                }
+
+                                await publishMessage({
+                                    chatSessionId: event.arguments.chatSessionId,
+                                    owner: event.identity.sub,
+                                    message: streamChunk
+                                })
+                                break;
+                            default:
+                                break;
                         }
                     }
-                    
-                    await publishMessage({
-                        chatSessionId: event.arguments.chatSessionId,
-                        owner: event.identity.sub,
-                        message: streamChunk
-                    })
+                    break;
+                // case "on_tool_end":
+                // case "on_tool_error":
+                // case "on_chat_model_end":
+                //     chunkIndex = 0 //reset the stream chunk index
+                //     const streamChunk = streamEvent.data.output as ToolMessage | AIMessageChunk
+                //     console.log('received on chat model end:\n', stringifyLimitStringLength(streamChunk))
+
+                //     // Check if this is a table result from textToTableTool and format it properly
+                //     if (streamChunk instanceof ToolMessage && streamChunk.name === 'textToTableTool') {
+                //         try {
+                //             const toolResult = JSON.parse(streamChunk.content as string);
+                //             if (toolResult.messageContentType === 'tool_table') {
+                //                 // Attach table data to the message using additional_kwargs which is supported by LangChain
+                //                 (streamChunk as any).additional_kwargs = {
+                //                     tableData: toolResult.data,
+                //                     tableColumns: toolResult.columns,
+                //                     matchedFileCount: toolResult.matchedFileCount,
+                //                     messageContentType: 'tool_table'
+                //                 };
+                //             }
+                //         } catch (error) {
+                //             console.error("Error processing textToTableTool result:", error);
+                //         }
+                //     }
+
+                //     await publishMessage({
+                //         chatSessionId: event.arguments.chatSessionId,
+                //         owner: event.identity.sub,
+                //         message: streamChunk
+                //     })
+                //     break
+                default:
+                    console.log('received stream event:\n', stringifyLimitStringLength(streamEvent))
                     break
             }
         }
