@@ -52,11 +52,13 @@ const plotDataToolSchema = z.object({
 });
 
 export const plotDataTool = tool(
-    async ({ filePaths, dataSeries, xAxisColumn, yAxisColumns, plotType = "line", title, xAxisLabel, yAxisLabel, tooltipColumn }) => {
+    async (params) => {
+        const { filePaths, dataSeries, xAxisColumn, yAxisColumns, plotType = "line", title, xAxisLabel, yAxisLabel, tooltipColumn } = params
         try {
             // Handle the case where we have dataSeries already defined (multiple files, advanced config)
             if (dataSeries && dataSeries.length > 0) {
-                return await processMultipleFiles(dataSeries, plotType, title, xAxisLabel, yAxisLabel);
+                await processMultipleFiles(dataSeries, plotType, title, xAxisLabel, yAxisLabel);
+                return params;
             }
             
             // Handle single file path or array of file paths with same column structure
@@ -93,7 +95,7 @@ export const plotDataTool = tool(
                     const yAxisColumn = Array.isArray(yAxisColumns) ? 
                         yAxisColumns[0].column : 
                         yAxisColumns;
-                        
+                    
                     return {
                         filePath,
                         xAxisColumn,
@@ -103,12 +105,14 @@ export const plotDataTool = tool(
                     };
                 });
                 
-                return await processMultipleFiles(generatedDataSeries, plotType, title, xAxisLabel, yAxisLabel);
+                await processMultipleFiles(generatedDataSeries, plotType, title, xAxisLabel, yAxisLabel);
+                return params;
             }
             
             // Single file case - use the original implementation
             const singleFilePath = normalizedFilePaths[0];
-            return await processSingleFile(singleFilePath, xAxisColumn, yAxisColumns, plotType, title, xAxisLabel, yAxisLabel, tooltipColumn);
+            await processSingleFile(singleFilePath, xAxisColumn, yAxisColumns, plotType, title, xAxisLabel, yAxisLabel, tooltipColumn);
+            return params;
         } catch (error: any) {
             return JSON.stringify({
                 error: `Error processing plot data: ${error.message}`,

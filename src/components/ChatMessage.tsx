@@ -6,6 +6,7 @@ import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import DescriptionIcon from '@mui/icons-material/Description';
 import UpdateIcon from '@mui/icons-material/Update';
 import VisibilityIcon from '@mui/icons-material/Visibility';
+import ReplayIcon from '@mui/icons-material/Replay';
 import { useEffect, useRef } from 'react';
 import React from 'react';
 
@@ -304,6 +305,7 @@ const TextToTableToolComponent = ({ content, theme }: {
 
 const ChatMessage = (params: {
     message: Message,
+    onRegenerateMessage?: (messageId: string, messageText: string) => void;
 }) => {
     //Render either ai or human messages based on the params.message.role
 
@@ -740,32 +742,57 @@ const ChatMessage = (params: {
                     break;
                 case 'textToTableTool':
                     return <TextToTableToolComponent content={params.message.content} theme={theme} />;
-                    break;
                 case 'plotDataTool':
                     return <PlotDataToolComponent content={params.message.content} theme={theme} chatSessionId={params.message.chatSessionId || ''} />;
-                    break;
                 default:
                     return <>
                         <p>Tool message</p>
                         <pre>
+                            {JSON.stringify(JSON.parse(params.message.content?.text || '{}'), null, 2)}
+                        </pre>
+                        <pre>
                             {JSON.stringify(params.message, null, 2)}
                         </pre>
+                        
                     </>
             }
 
             break;
         case 'human':
             return (
-                <div style={humanMessageStyle}>
-                    <ReactMarkdown
-                        remarkPlugins={[remarkGfm]}
-                    >
-                        {params.message.content?.text}
-                    </ReactMarkdown>
-
-                    {/* <pre>
-                        {JSON.stringify(params.message, null, 2)}
-                    </pre> */}
+                <div style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'flex-end',
+                    width: '100%'
+                }}>
+                    <div style={humanMessageStyle}>
+                        <ReactMarkdown
+                            remarkPlugins={[remarkGfm]}
+                        >
+                            {params.message.content?.text}
+                        </ReactMarkdown>
+                    </div>
+                    {params.onRegenerateMessage && (
+                        <Button 
+                            size="small"
+                            onClick={() => params.onRegenerateMessage!(
+                                params.message.id || '', 
+                                params.message.content?.text || ''
+                            )}
+                            startIcon={<ReplayIcon fontSize="small" />}
+                            sx={{ 
+                                mt: 0.5, 
+                                fontSize: '0.75rem',
+                                color: theme.palette.grey[700],
+                                '&:hover': {
+                                    backgroundColor: theme.palette.grey[100]
+                                }
+                            }}
+                        >
+                            Retry
+                        </Button>
+                    )}
                 </div>
             )
             break;

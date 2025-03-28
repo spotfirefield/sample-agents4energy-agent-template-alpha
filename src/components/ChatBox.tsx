@@ -202,7 +202,47 @@ const ChatBox = (params: {
     responseStreamChunkSubscriptionHandler()
   }, [params.chatSessionId])
 
-
+  // Update function to handle message regeneration
+  const handleRegenerateMessage = useCallback(async (messageId: string, messageText: string) => {
+    // Find the index of the message to regenerate
+    const messageIndex = messages.findIndex(msg => msg.id === messageId);
+    
+    if (messageIndex !== -1) {
+      // Set the message text as the current input
+      setUserInput(messageText);
+      
+      try {
+        // Find the clicked message and all subsequent messages to delete from API
+        const messagesToDelete = messages.filter((_, index) => index >= messageIndex);
+        
+        // Delete messages from the API
+        for (const msgToDelete of messagesToDelete) {
+          if (msgToDelete.id) {
+            await amplifyClient.models.ChatMessage.delete({
+              id: msgToDelete.id
+            });
+            console.log(`Deleted message ${msgToDelete.id} from API`);
+          }
+        }
+        
+        // Remove messages from UI
+        const messagesBeforeRegeneratedMessage = messages.filter((_, index) => index < messageIndex);
+        setMessages(messagesBeforeRegeneratedMessage);
+        
+        // Clear streaming message if any
+        setStreamChunkMessage(undefined);
+        setResponseStreamChunks([]);
+        
+        // Scroll to the input box
+        messagesContainerRef.current?.scrollTo({
+          top: messagesContainerRef.current.scrollHeight,
+          behavior: 'smooth'
+        });
+      } catch (error) {
+        console.error('Error deleting messages:', error);
+      }
+    }
+  }, [messages, setUserInput, setStreamChunkMessage, setResponseStreamChunks, setMessages]);
 
   const handleSend = useCallback(async (userMessage: string) => {
     if (userMessage.trim()) {
@@ -279,6 +319,7 @@ const ChatBox = (params: {
               <ListItem key={message.id}>
                 <ChatMessage
                   message={message}
+                  onRegenerateMessage={message.role === 'human' ? handleRegenerateMessage : undefined}
                 />
               </ListItem>
             ))}
