@@ -1,6 +1,6 @@
 import { tool } from "@langchain/core/tools";
 import { z } from "zod";
-import { AthenaClient, StartCalculationExecutionCommand, GetCalculationExecutionCommand, StartSessionCommand, GetSessionStatusCommand } from '@aws-sdk/client-athena';
+import { AthenaClient, StartCalculationExecutionCommand, GetCalculationExecutionCommand, StartSessionCommand, GetSessionStatusCommand, ListSessionsCommand } from '@aws-sdk/client-athena';
 import { S3Client, GetObjectCommand } from '@aws-sdk/client-s3';
 import { v4 as uuidv4 } from 'uuid';
 import { getConfiguredAmplifyClient } from '../../../utils/amplifyUtils';
@@ -286,6 +286,67 @@ export async function fetchCalculationOutputs(resultData: any, chatSessionId: st
     };
 }
 
+// Helper function to find an existing active session for a chat session
+async function findExistingSession(athenaClient: AthenaClient, chatSessionId: string): Promise<string | null> {
+    try {
+        console.log(`Looking for existing session for chat session: ${chatSessionId}`);
+        
+        const listSessionsCommand = new ListSessionsCommand({
+            WorkGroup: ATHENA_WORKGROUP,
+            // Only look for recent sessions that might be active
+            StateFilter: 'IDLE'
+        });
+        
+        const response = await athenaClient.send(listSessionsCommand);
+        
+        if (!response.Sessions || response.Sessions.length === 0) {
+            console.log('No active sessions found');
+            return null;
+        }
+        
+        // Find a session that was created with this chat session ID
+        // SessionSummary doesn't have ClientRequestToken, so we check Description
+        // which includes the chat session ID as part of the description
+        const matchingSession = response.Sessions.find(session => 
+            session.Description?.includes(`[ChatSessionID:${chatSessionId}]`) &&
+            session.SessionId
+        );
+        
+        if (matchingSession && matchingSession.SessionId) {
+            console.log(`Found existing session: ${matchingSession.SessionId}`);
+            return matchingSession.SessionId;
+        }
+        
+        console.log('No matching session found for this chat session ID');
+        return null;
+    } catch (error) {
+        console.error('Error finding existing session:', error);
+        return null;
+    }
+}
+
+// Helper function to check if a session is active and usable
+async function isSessionActive(athenaClient: AthenaClient, sessionId: string): Promise<boolean> {
+    try {
+        const getSessionStatusCommand = new GetSessionStatusCommand({
+            SessionId: sessionId
+        });
+        
+        const response = await athenaClient.send(getSessionStatusCommand);
+        
+        if (response.Status?.State === 'IDLE') {
+            console.log(`Session ${sessionId} is active and idle`);
+            return true;
+        }
+        
+        console.log(`Session ${sessionId} is not in IDLE state, current state: ${response.Status?.State}`);
+        return false;
+    } catch (error) {
+        console.error(`Error checking session status for ${sessionId}:`, error);
+        return false;
+    }
+}
+
 // Schema for the PySpark execution tool
 const pysparkToolSchema = z.object({
     code: z.string().describe("PySpark code to execute. The 'spark' session is already initialized."),
@@ -308,78 +369,102 @@ export const pysparkTool = tool(
             // Create Athena client
             const athenaClient = new AthenaClient({ region: AWS_REGION });
             
-            // Start a session
-            await publishProgress(chatSessionId, "🔄 Creating Athena session...", progressIndex++);
-            // const sessionToken = chatSessionId;
-            const sessionToken = uuidv4();
-            const startSessionCommand = new StartSessionCommand({
-                WorkGroup: ATHENA_WORKGROUP,
-                Description: `Session for ${description}`,
-                ClientRequestToken: sessionToken,
-                EngineConfiguration: {
-                    MaxConcurrentDpus: 20
+            // Try to find an existing active session first
+            await publishProgress(chatSessionId, "🔍 Checking for existing session...", progressIndex++);
+            let sessionId: string | null = null;
+            
+            // First look for an existing session for this chat session
+            const existingSessionId = await findExistingSession(athenaClient, chatSessionId);
+            
+            if (existingSessionId) {
+                // Check if the session is still active
+                const isActive = await isSessionActive(athenaClient, existingSessionId);
+                
+                if (isActive) {
+                    sessionId = existingSessionId;
+                    await publishProgress(chatSessionId, `✅ Reusing existing Athena session (faster execution)`, progressIndex++);
+                    console.log(`Reusing existing active session: ${sessionId} for chat session: ${chatSessionId}`);
+                } else {
+                    await publishProgress(chatSessionId, `⚠️ Found existing session but it's no longer active, creating a new one...`, progressIndex++);
+                    console.log(`Found session ${existingSessionId} but it's not in IDLE state, will create new session`);
                 }
-            });
-            
-            console.log(`Starting Athena session in workgroup: ${ATHENA_WORKGROUP}`);
-            const sessionResponse = await athenaClient.send(startSessionCommand);
-            
-            if (!sessionResponse.SessionId) {
-                await publishProgress(chatSessionId, "❌ Failed to create Athena session", progressIndex++);
-                return JSON.stringify({
-                    error: "Failed to create Athena session",
-                    details: "No session ID was returned"
-                });
             }
             
-            const sessionId = sessionResponse.SessionId;
-            console.log(`Session ID: ${sessionId}`);
-            await publishProgress(chatSessionId, `✅ Athena session created with ID: ${sessionId}`, progressIndex++);
-            
-            // Wait for the session to be IDLE
-            await publishProgress(chatSessionId, "⏳ Waiting for session to be ready...", progressIndex++);
-            let sessionState = 'CREATING';
-            let sessionAttempts = 0;
-            let lastReportedPercentage = 0;
-            const maxSessionAttempts = Math.ceil(timeout / 5); // Poll roughly every 5 seconds
-            
-            while (sessionState !== 'IDLE' && sessionState !== 'FAILED' && sessionState !== 'TERMINATED' && sessionAttempts < maxSessionAttempts) {
-                await new Promise(resolve => setTimeout(resolve, 5000));
+            // If no active session was found, create a new one
+            if (!sessionId) {
+                await publishProgress(chatSessionId, "🔄 Creating new Athena session...", progressIndex++);
                 
-                const getSessionStatusCommand = new GetSessionStatusCommand({
-                    SessionId: sessionId
-                });
-                
-                try {
-                    const getSessionStatusResponse = await athenaClient.send(getSessionStatusCommand);
-                    sessionState = getSessionStatusResponse.Status?.State || 'UNKNOWN';
-                    console.log(`Current session state: ${sessionState} (Attempt ${sessionAttempts + 1}/${maxSessionAttempts})`);
-                    
-                    // Calculate percentage for progress updates
-                    const percentage = Math.round((sessionAttempts / maxSessionAttempts) * 100);
-                    
-                    // Only update if the percentage changed significantly (e.g., by 10%)
-                    if (percentage - lastReportedPercentage >= 10) {
-                        await publishProgress(
-                            chatSessionId, 
-                            `⏳ Initializing session: ${sessionState} (${percentage}% complete)`, 
-                            progressIndex
-                        );
-                        lastReportedPercentage = percentage;
+                // Use chatSessionId as the sessionToken for reuse
+                const sessionToken = chatSessionId;
+                const startSessionCommand = new StartSessionCommand({
+                    WorkGroup: ATHENA_WORKGROUP,
+                    Description: `Session for ${description} [ChatSessionID:${chatSessionId}]`,
+                    ClientRequestToken: sessionToken,
+                    EngineConfiguration: {
+                        MaxConcurrentDpus: 20
                     }
-                } catch (error) {
-                    console.error('Error getting session status:', error);
+                });
+                
+                console.log(`Starting Athena session in workgroup: ${ATHENA_WORKGROUP}`);
+                const sessionResponse = await athenaClient.send(startSessionCommand);
+                
+                if (!sessionResponse.SessionId) {
+                    await publishProgress(chatSessionId, "❌ Failed to create Athena session", progressIndex++);
+                    return JSON.stringify({
+                        error: "Failed to create Athena session",
+                        details: "No session ID was returned"
+                    });
                 }
                 
-                sessionAttempts++;
-            }
-            
-            if (sessionState !== 'IDLE') {
-                await publishProgress(chatSessionId, `❌ Session failed to reach ready state: ${sessionState}`, progressIndex++);
-                return JSON.stringify({
-                    error: "Session did not reach IDLE state",
-                    state: sessionState
-                });
+                sessionId = sessionResponse.SessionId;
+                console.log(`Session ID: ${sessionId}`);
+                await publishProgress(chatSessionId, `✅ Athena session created with ID: ${sessionId}`, progressIndex++);
+                
+                // Wait for the session to be IDLE
+                await publishProgress(chatSessionId, "⏳ Waiting for session to be ready...", progressIndex++);
+                let sessionState = 'CREATING';
+                let sessionAttempts = 0;
+                let lastReportedPercentage = 0;
+                const maxSessionAttempts = Math.ceil(timeout / 5); // Poll roughly every 5 seconds
+                
+                while (sessionState !== 'IDLE' && sessionState !== 'FAILED' && sessionState !== 'TERMINATED' && sessionAttempts < maxSessionAttempts) {
+                    await new Promise(resolve => setTimeout(resolve, 5000));
+                    
+                    const getSessionStatusCommand = new GetSessionStatusCommand({
+                        SessionId: sessionId
+                    });
+                    
+                    try {
+                        const getSessionStatusResponse = await athenaClient.send(getSessionStatusCommand);
+                        sessionState = getSessionStatusResponse.Status?.State || 'UNKNOWN';
+                        console.log(`Current session state: ${sessionState} (Attempt ${sessionAttempts + 1}/${maxSessionAttempts})`);
+                        
+                        // Calculate percentage for progress updates
+                        const percentage = Math.round((sessionAttempts / maxSessionAttempts) * 100);
+                        
+                        // Only update if the percentage changed significantly (e.g., by 10%)
+                        if (percentage - lastReportedPercentage >= 10) {
+                            await publishProgress(
+                                chatSessionId, 
+                                `⏳ Initializing session: ${sessionState} (${percentage}% complete)`, 
+                                progressIndex
+                            );
+                            lastReportedPercentage = percentage;
+                        }
+                    } catch (error) {
+                        console.error('Error getting session status:', error);
+                    }
+                    
+                    sessionAttempts++;
+                }
+                
+                if (sessionState !== 'IDLE') {
+                    await publishProgress(chatSessionId, `❌ Session failed to reach ready state: ${sessionState}`, progressIndex++);
+                    return JSON.stringify({
+                        error: "Session did not reach IDLE state",
+                        state: sessionState
+                    });
+                }
             }
             
             await publishProgress(chatSessionId, "✅ Session ready! Setting up environment...", progressIndex++);
