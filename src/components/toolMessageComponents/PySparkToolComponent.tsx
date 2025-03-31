@@ -250,20 +250,36 @@ export const PySparkToolComponent = ({
         {/* If we have stderr, show it */}
         {stderr && (
           <div style={{
-            backgroundColor: theme.palette.error.light,
-            padding: theme.spacing(1.5),
+            backgroundColor: theme.palette.error.light || '#FFEBEE',
+            padding: theme.spacing(2),
             borderRadius: theme.shape.borderRadius,
-            marginTop: theme.spacing(2)
+            marginTop: theme.spacing(2),
+            borderLeft: `4px solid ${theme.palette.error.main}`,
+            boxShadow: `0 1px 2px rgba(0,0,0,0.05)`
           }}>
-            <Typography variant="subtitle2" color="error">
-              Errors:
+            <Typography variant="h6" style={{ 
+              color: theme.palette.error.dark,
+              fontWeight: 'bold',
+              marginBottom: theme.spacing(1.5),
+              display: 'flex',
+              alignItems: 'center',
+              gap: theme.spacing(1),
+            }}>
+              <ErrorIcon fontSize="small" />
+              Error Details
             </Typography>
             <pre style={{ 
               whiteSpace: 'pre-wrap', 
-              margin: theme.spacing(1, 0, 0),
+              margin: 0,
               fontFamily: 'monospace',
-              fontSize: '0.85rem',
-              color: theme.palette.error.dark
+              fontSize: '0.9rem',
+              color: theme.palette.error.dark,
+              backgroundColor: 'rgba(255, 255, 255, 0.7)',
+              padding: theme.spacing(1.5),
+              borderRadius: theme.shape.borderRadius,
+              overflow: 'auto',
+              maxHeight: '300px',
+              lineHeight: 1.5
             }}>
               {stderr}
             </pre>

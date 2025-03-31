@@ -26,15 +26,14 @@ const athenaExecutionRole = new iam.Role(backend.stack, 'AthenaExecutionRole', {
 athenaExecutionRole.addToPolicy(
   new iam.PolicyStatement({
     actions: [
+      "s3:PutObject",
+      "s3:DeleteObject",
       "s3:GetBucketLocation",
       "s3:GetObject",
       "s3:ListBucket",
       "s3:ListBucketMultipartUploads",
       "s3:ListMultipartUploadParts",
       "s3:AbortMultipartUpload",
-      "s3:CreateBucket",
-      "s3:PutObject",
-      "s3:PutBucketPublicAccessBlock"
     ],
     resources: [
       backend.storage.resources.bucket.bucketArn,
