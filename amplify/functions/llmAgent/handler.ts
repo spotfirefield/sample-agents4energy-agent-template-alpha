@@ -9,8 +9,11 @@ import { Calculator } from "@langchain/community/tools/calculator";
 
 import { publishResponseStreamChunk } from "../graphql/mutations";
 
-import { setChatSessionId, s3FileManagementTools } from "./s3ToolBox";
-import { userInputTool, plotDataTool, pysparkTool } from "./customToolBox";
+import { setChatSessionId } from "../tools/toolUtils";
+import { s3FileManagementTools } from "../tools/s3ToolBox";
+import { userInputTool } from "../tools/userInputTool";
+import { pysparkTool } from "../tools/athenaPySparkTool";
+import { plotDataTool } from "../tools/plotDataTool";
 import { Schema } from '../../data/resource';
 
 import { getLangChainChatMessagesStartingWithHumanMessage, getLangChainMessageTextContent, publishMessage, stringifyLimitStringLength } from '../../../utils/langChainUtils';

@@ -21,6 +21,7 @@ import remarkGfm from 'remark-gfm'
 import { stringifyLimitStringLength } from '../../utils/langChainUtils';
 import { PlotDataToolComponent } from './toolMessageComponents/PlotDataToolComponent';
 import { SearchFilesToolComponent } from './toolMessageComponents/SearchFilesToolComponent';
+import PySparkToolComponent from './toolMessageComponents/PySparkToolComponent';
 
 // Text to Table Tool Component - extracted to avoid conditional hooks
 const TextToTableToolComponent = ({ content, theme }: { 
@@ -779,6 +780,8 @@ const ChatMessage = (params: {
                     return <TextToTableToolComponent content={params.message.content} theme={theme} />;
                 case 'plotDataTool':
                     return <PlotDataToolComponent content={params.message.content} theme={theme} chatSessionId={params.message.chatSessionId || ''} />;
+                case 'pysparkTool':
+                    return <PySparkToolComponent content={params.message.content} theme={theme} />;
                 default:
                     return <>
                         <p>Tool message</p>
