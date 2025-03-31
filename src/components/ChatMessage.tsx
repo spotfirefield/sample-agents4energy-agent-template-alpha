@@ -7,8 +7,11 @@ import DescriptionIcon from '@mui/icons-material/Description';
 import UpdateIcon from '@mui/icons-material/Update';
 import VisibilityIcon from '@mui/icons-material/Visibility';
 import ReplayIcon from '@mui/icons-material/Replay';
-import { useEffect, useRef } from 'react';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+import ExpandLessIcon from '@mui/icons-material/ExpandLess';
+import { useEffect, useRef, useState } from 'react';
 import React from 'react';
+import { stringify } from 'yaml';
 
 import { Message } from '@/../utils/types';
 import { useFileSystem } from '@/contexts/FileSystemContext';
@@ -376,7 +379,24 @@ const ChatMessage = (params: {
                         <Typography variant="subtitle2" color="textSecondary" gutterBottom>
                             Tool Calls
                         </Typography>
-                        {JSON.parse(params.message.toolCalls).map((toolCall: { name: string, args: unknown, id: string }, index: number) => (
+                        {JSON.parse(params.message.toolCalls).map((toolCall: { name: string, args: unknown, id: string }, index: number) => {
+                            // Track expanded state for each tool call
+                            const [expanded, setExpanded] = useState(false);
+                            
+                            // Parse and format the args to display
+                            let formattedArgs;
+                            try {
+                                formattedArgs = stringify(JSON.parse(JSON.stringify(toolCall.args)));
+                            } catch {
+                                formattedArgs = stringify(toolCall.args);
+                            }
+                            
+                            // Split into lines and limit to first 5 if not expanded
+                            const lines = formattedArgs.split('\n');
+                            const isLong = lines.length > 5;
+                            const displayLines = expanded ? lines : lines.slice(0, 5);
+                            
+                            return (
                             <div key={toolCall.id || index} style={{
                                 backgroundColor: theme.palette.common.white,
                                 padding: theme.spacing(1),
@@ -396,11 +416,26 @@ const ChatMessage = (params: {
                                     marginTop: theme.spacing(0.5)
                                 }}>
                                     <pre>
-                                        {stringifyLimitStringLength(toolCall.args, 50)}
+                                        {displayLines.join('\n')}
+                                        {isLong && !expanded && '...'}
                                     </pre>
+                                    {isLong && (
+                                        <Button 
+                                            size="small"
+                                            onClick={() => setExpanded(!expanded)}
+                                            startIcon={expanded ? <ExpandLessIcon fontSize="small" /> : <ExpandMoreIcon fontSize="small" />}
+                                            style={{ 
+                                                marginTop: theme.spacing(0.5),
+                                                fontSize: '0.75rem',
+                                                textTransform: 'none'
+                                            }}
+                                        >
+                                            {expanded ? 'Show Less' : 'Show More'}
+                                        </Button>
+                                    )}
                                 </div>
                             </div>
-                        ))}
+                        )})}
                     </div>
                 )}
             </div>

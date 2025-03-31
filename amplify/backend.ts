@@ -74,16 +74,20 @@ athenaExecutionRole.addToPolicy(
 athenaExecutionRole.addToPolicy(
   new iam.PolicyStatement({
     actions: [
-      "athena:GetQueryExecution",
-      "athena:GetQueryResults",
-      "athena:StartQueryExecution",
-      "athena:StopQueryExecution",
       "athena:GetWorkGroup",
+      "athena:TerminateSession",
+      "athena:GetSession",
+      "athena:GetSessionStatus",
+      "athena:ListSessions",
       "athena:StartCalculationExecution",
-      "athena:GetCalculationExecution",
       "athena:GetCalculationExecutionCode",
+      "athena:StopCalculationExecution",
+      "athena:ListCalculationExecutions",
+      "athena:GetCalculationExecution",
       "athena:GetCalculationExecutionStatus",
-      "athena:StopCalculationExecution"
+      "athena:ListExecutors",
+      "athena:ExportNotebook",
+      "athena:UpdateNotebook"
     ],
     resources: ["*"],
   })
@@ -117,8 +121,8 @@ const athenaWorkgroup = new athena.CfnWorkGroup(backend.stack, 'SparkWorkgroup',
 
 backend.stack.tags.setTag('Project', 'workshop-a4e');
 
-backend.addOutput({custom: {rootStackName: backend.stack.stackName}});
-backend.addOutput({custom: {athenaWorkgroupName: athenaWorkgroup.name}});
+backend.addOutput({ custom: { rootStackName: backend.stack.stackName } });
+backend.addOutput({ custom: { athenaWorkgroupName: athenaWorkgroup.name } });
 
 //Add permissions to the lambda functions to invoke the model
 [
@@ -128,10 +132,10 @@ backend.addOutput({custom: {athenaWorkgroupName: athenaWorkgroup.name}});
     new iam.PolicyStatement({
       actions: ["bedrock:InvokeModel*"],
       resources: [
-          `arn:aws:bedrock:${backend.stack.region}::foundation-model/*`,
-          `arn:aws:bedrock:${backend.stack.region}:${backend.stack.account}:inference-profile/*`,
+        `arn:aws:bedrock:us-*::foundation-model/*`,
+        `arn:aws:bedrock:us-*:${backend.stack.account}:inference-profile/*`,
       ],
-  }),
+    }),
   )
 })
 
@@ -139,13 +143,23 @@ backend.addOutput({custom: {athenaWorkgroupName: athenaWorkgroup.name}});
 backend.llmAgentFunction.resources.lambda.addToRolePolicy(
   new iam.PolicyStatement({
     actions: [
+      "athena:StartSession",
+      "athena:GetSessionStatus",
+      "athena:TerminateSession",
+      "athena:ListSessions",
       "athena:StartCalculationExecution",
+      "athena:GetCalculationExecutionCode",
+      "athena:StopCalculationExecution",
+      "athena:ListCalculationExecutions",
       "athena:GetCalculationExecution",
       "athena:GetCalculationExecutionStatus",
-      "athena:GetCalculationExecutionCode",
-      "athena:StopCalculationExecution"
+      "athena:ListExecutors",
+      "athena:ExportNotebook",
+      "athena:UpdateNotebook"
     ],
-    resources: [`arn:aws:athena:${backend.stack.region}:${backend.stack.account}:workgroup/pyspark-workgroup`],
+    resources: [
+      `arn:aws:athena:${backend.stack.region}:${backend.stack.account}:workgroup/${athenaWorkgroup.name}`,
+    ],
   })
 );
 
@@ -168,7 +182,7 @@ backend.llmAgentFunction.resources.lambda.addToRolePolicy(
 );
 
 backend.llmAgentFunction.addEnvironment(
-  'STORAGE_BUCKET_NAME', 
+  'STORAGE_BUCKET_NAME',
   backend.storage.resources.bucket.bucketName
 );
 
