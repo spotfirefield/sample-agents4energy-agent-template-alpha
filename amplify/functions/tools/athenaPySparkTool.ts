@@ -71,6 +71,125 @@ async function readS3File(s3Uri: string): Promise<string> {
     }
 }
 
+// Helper function to execute a calculation and wait for completion
+export async function executeCalculation(
+    athenaClient: AthenaClient,
+    sessionId: string, 
+    code: string, 
+    description: string, 
+    chatSessionId: string, 
+    progressIndex: number,
+    options: {
+        maxAttempts?: number,
+        waitMessage?: string,
+        successMessage?: string,
+        failureMessage?: string,
+        continueOnFailure?: boolean
+    } = {}
+): Promise<{ 
+    success: boolean, 
+    state: string, 
+    calculationId?: string, 
+    resultData?: any, 
+    newProgressIndex: number 
+}> {
+    const {
+        maxAttempts = 3,
+        waitMessage = "⏳ Executing calculation...",
+        successMessage = "✅ Calculation completed successfully",
+        failureMessage = "❌ Calculation failed",
+        continueOnFailure = false
+    } = options;
+    
+    let currentProgressIndex = progressIndex;
+    
+    // Start the calculation execution
+    const clientRequestToken = uuidv4();
+    const startCommand = new StartCalculationExecutionCommand({
+        SessionId: sessionId,
+        CodeBlock: code,
+        Description: description,
+        ClientRequestToken: clientRequestToken,
+    });
+    
+    console.log(`Starting calculation execution: ${description}`);
+    const startResponse = await athenaClient.send(startCommand);
+    
+    if (!startResponse.CalculationExecutionId) {
+        await publishProgress(chatSessionId, `${failureMessage}: No calculation ID returned`, currentProgressIndex++);
+        return { 
+            success: false, 
+            state: 'FAILED', 
+            newProgressIndex: currentProgressIndex 
+        };
+    }
+    
+    const calculationId = startResponse.CalculationExecutionId;
+    console.log(`Calculation execution ID: ${calculationId}`);
+    
+    // Poll for completion
+    await publishProgress(chatSessionId, waitMessage, currentProgressIndex++);
+    let finalState = 'CREATING';
+    let resultData = null;
+    let attempts = 0;
+    
+    while (
+        finalState !== 'COMPLETED' &&
+        finalState !== 'FAILED' &&
+        finalState !== 'CANCELED' &&
+        attempts < maxAttempts
+    ) {
+        await new Promise(resolve => setTimeout(resolve, 5000));
+        
+        const getCommand = new GetCalculationExecutionCommand({
+            CalculationExecutionId: calculationId
+        });
+        
+        try {
+            const getResponse = await athenaClient.send(getCommand);
+            finalState = getResponse.Status?.State || 'UNKNOWN';
+            
+            if (getResponse.Status?.StateChangeReason) {
+                console.log(`State change reason: ${getResponse.Status.StateChangeReason}`);
+            }
+            
+            if (getResponse.Status?.State && ['COMPLETED', 'FAILED', 'CANCELED'].includes(getResponse.Status.State) && getResponse.Result) {
+                resultData = getResponse.Result;
+            }
+        } catch (error) {
+            console.error(`Error getting calculation status: ${error}`);
+        }
+        
+        console.log(`Calculation state: ${finalState} (Attempt ${attempts + 1}/${maxAttempts})`);
+        attempts++;
+    }
+    
+    if (finalState === 'COMPLETED') {
+        await publishProgress(chatSessionId, successMessage, currentProgressIndex++);
+        return { 
+            success: true, 
+            state: finalState, 
+            calculationId, 
+            resultData, 
+            newProgressIndex: currentProgressIndex 
+        };
+    } else {
+        if (!continueOnFailure) {
+            await publishProgress(chatSessionId, `${failureMessage}: ${finalState}`, currentProgressIndex++);
+        } else {
+            await publishProgress(chatSessionId, `⚠️ Warning: ${failureMessage}: ${finalState}`, currentProgressIndex++);
+        }
+        
+        return { 
+            success: false, 
+            state: finalState, 
+            calculationId, 
+            resultData, 
+            newProgressIndex: currentProgressIndex 
+        };
+    }
+}
+
 // Helper function to publish progress updates
 async function publishProgress(chatSessionId: string, message: string, index: number = 0) {
     try {
@@ -85,12 +204,12 @@ async function publishProgress(chatSessionId: string, message: string, index: nu
         });
         console.log(`Progress update: ${message}`);
     } catch (error) {
-        console.error('Error publishing progress update:', error);
+        console.info('Error publishing progress update:', error);
     }
 }
 
 // Helper function to fetch calculation outputs from S3
-async function fetchCalculationOutputs(resultData: any, chatSessionId: string, progressIndex: number) {
+export async function fetchCalculationOutputs(resultData: any, chatSessionId: string, progressIndex: number) {
     let stdoutContent = "";
     let stderrContent = "";
     let resultContent = "";
@@ -191,11 +310,12 @@ export const pysparkTool = tool(
             
             // Start a session
             await publishProgress(chatSessionId, "🔄 Creating Athena session...", progressIndex++);
-            // const sessionToken = uuidv4();
+            // const sessionToken = chatSessionId;
+            const sessionToken = uuidv4();
             const startSessionCommand = new StartSessionCommand({
                 WorkGroup: ATHENA_WORKGROUP,
                 Description: `Session for ${description}`,
-                ClientRequestToken: chatSessionId,
+                ClientRequestToken: sessionToken,
                 EngineConfiguration: {
                     MaxConcurrentDpus: 20
                 }
@@ -262,97 +382,50 @@ export const pysparkTool = tool(
                 });
             }
             
-            await publishProgress(chatSessionId, "✅ Session ready! Submitting PySpark code for execution...", progressIndex++);
+            await publishProgress(chatSessionId, "✅ Session ready! Setting up environment...", progressIndex++);
             
-            // Start the calculation execution
-            const clientRequestToken = uuidv4();
-            const startCommand = new StartCalculationExecutionCommand({
-                SessionId: sessionId,
-                CodeBlock: code,
-                Description: description,
-                ClientRequestToken: clientRequestToken,
-            });
-            
-            console.log('Starting PySpark calculation execution...');
-            const startResponse = await athenaClient.send(startCommand);
-            
-            if (!startResponse.CalculationExecutionId) {
-                await publishProgress(chatSessionId, "❌ Failed to start calculation execution", progressIndex++);
-                return JSON.stringify({
-                    error: "Failed to start calculation execution",
-                    details: "No calculation execution ID was returned"
-                });
-            }
-            
-            const calculationId = startResponse.CalculationExecutionId;
-            console.log(`Calculation execution ID: ${calculationId}`);
-            await publishProgress(chatSessionId, `✅ Calculation started with ID: ${calculationId}`, progressIndex++);
-            
-            // Poll for completion
-            await publishProgress(chatSessionId, "⏳ Executing PySpark code...", progressIndex++);
-            let finalState = 'CREATING';
-            let resultData = null;
-            let attempts = 0;
-            let lastReportedExecutionPercentage = 0;
-            const maxAttempts = Math.ceil(timeout / 5); // Poll roughly every 5 seconds
-            
-            while (
-                finalState !== 'COMPLETED' &&
-                finalState !== 'FAILED' &&
-                finalState !== 'CANCELED' &&
-                attempts < maxAttempts
-            ) {
-                await new Promise(resolve => setTimeout(resolve, 5000));
-                
-                const getCommand = new GetCalculationExecutionCommand({
-                    CalculationExecutionId: calculationId
-                });
-                
-                try {
-                    const getResponse = await athenaClient.send(getCommand);
-                    finalState = getResponse.Status?.State || 'UNKNOWN';
-                    
-                    if (getResponse.Status?.StateChangeReason) {
-                        console.log(`State change reason: ${getResponse.Status.StateChangeReason}`);
-                        await publishProgress(
-                            chatSessionId, 
-                            `ℹ️ Execution update: ${getResponse.Status.StateChangeReason}`, 
-                            progressIndex++
-                        );
-                    }
-                    
-                    if (getResponse.Status?.State && ['COMPLETED', 'FAILED', 'CANCELED'].includes(getResponse.Status.State) && getResponse.Result) {
-                        resultData = getResponse.Result;
-                    }
-                    
-                    // Calculate percentage for progress updates
-                    const execPercentage = Math.round((attempts / maxAttempts) * 100);
-                    
-                    // Only update if the percentage changed significantly (e.g., by 10%)
-                    if (execPercentage - lastReportedExecutionPercentage >= 10) {
-                        await publishProgress(
-                            chatSessionId, 
-                            `⏳ Executing code: ${finalState} (${execPercentage}% of max execution time)`, 
-                            progressIndex
-                        );
-                        lastReportedExecutionPercentage = execPercentage;
-                    }
-                } catch (error) {
-                    console.error('Error getting calculation status:', error);
+            // Add pulp library from S3
+            const pulpResult = await executeCalculation(
+                athenaClient,
+                sessionId,
+                `sc.addPyFile('s3://${process.env.STORAGE_BUCKET_NAME}/pypi/pulp_library.zip')`,
+                "Add pulp library",
+                chatSessionId,
+                progressIndex,
+                {
+                    maxAttempts: 12, // About 1 minute max wait time
+                    waitMessage: "📚 Adding pulp library from S3...",
+                    successMessage: "✅ Successfully added pulp library",
+                    failureMessage: "Failed to add pulp library",
+                    continueOnFailure: true
                 }
-                
-                console.log(`Current execution state: ${finalState} (Attempt ${attempts + 1}/${maxAttempts})`);
-                attempts++;
-            }
+            );
+            
+            progressIndex = pulpResult.newProgressIndex;
+            
+            await publishProgress(chatSessionId, "✅ Submitting your PySpark code for execution...", progressIndex++);
+            
+            // Execute the main code
+            const codeResult = await executeCalculation(
+                athenaClient,
+                sessionId,
+                code,
+                description,
+                chatSessionId,
+                progressIndex,
+                {
+                    maxAttempts: Math.ceil(timeout / 5),
+                    waitMessage: "⏳ Executing PySpark code...",
+                    successMessage: "✅ Execution completed! Fetching results..."
+                }
+            );
+            
+            progressIndex = codeResult.newProgressIndex;
             
             // Check final state
-            console.log(`Final state: ${finalState}`);
-            
-            if (finalState === 'COMPLETED') {
-                await publishProgress(chatSessionId, "✅ Execution completed! Fetching results...", progressIndex++);
-                
+            if (codeResult.success) {
                 // Get stdout content
-                if (!resultData?.StdOutS3Uri) {
+                if (!codeResult.resultData?.StdOutS3Uri) {
                     await publishProgress(chatSessionId, "⚠️ Execution completed but no output location found", progressIndex++);
                     return JSON.stringify({
                         status: "COMPLETED",
@@ -361,7 +434,7 @@ export const pysparkTool = tool(
                 }
                 
                 // Use the helper function to fetch outputs
-                const outputs = await fetchCalculationOutputs(resultData, chatSessionId, progressIndex);
+                const outputs = await fetchCalculationOutputs(codeResult.resultData, chatSessionId, progressIndex);
                 progressIndex += 3; // Account for progress updates in the helper function
                 
                 await publishProgress(chatSessionId, "✅ All results fetched successfully!", progressIndex++);
@@ -375,13 +448,13 @@ export const pysparkTool = tool(
                     }
                 });
             } else {
-                await publishProgress(chatSessionId, `❌ Execution failed with state: ${finalState}`, progressIndex++);
+                await publishProgress(chatSessionId, `❌ Execution failed with state: ${codeResult.state}`, progressIndex++);
                 
                 // Use the helper function to fetch outputs even in failure case
-                const outputs = await fetchCalculationOutputs(resultData, chatSessionId, progressIndex);
+                const outputs = await fetchCalculationOutputs(codeResult.resultData, chatSessionId, progressIndex);
                 
                 return JSON.stringify({
-                    status: finalState,
+                    status: codeResult.state,
                     error: "PySpark execution did not complete successfully",
                     details: "Check logs for more information",
                     output: outputs
