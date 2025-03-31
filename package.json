@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "test": "mocha --require tsx test/**/*.ts"
   },
   "dependencies": {
     "@aws-amplify/backend-output-schemas": "^1.4.0",
@@ -36,23 +37,31 @@
   "devDependencies": {
     "@aws-amplify/backend": "^1.14.0",
     "@aws-amplify/backend-cli": "^1.4.9",
+    "@aws-sdk/client-athena": "^3.777.0",
     "@eslint/eslintrc": "^3",
+    "@types/chai": "^5.2.1",
+    "@types/mocha": "^10.0.10",
     "@types/node": "^20",
     "@types/react": "^18",
-    "@types/react-chartjs-2": "^2.0.2",
     "@types/react-dom": "^18",
+    "@types/uuid": "^10.0.0",
     "aws-cdk": "^2.174.1",
     "aws-cdk-lib": "^2.174.1",
     "axios": "^1.7.9",
+    "chai": "^5.2.0",
     "cheerio": "^1.0.0",
     "constructs": "^10.4.2",
+    "dotenv": "^16.4.7",
     "esbuild": "^0.25.1",
     "eslint": "^8.56.0",
     "eslint-config-next": "^14.2.26",
+    "mocha": "^11.1.0",
     "postcss": "^8",
     "puppeteer": "^24.3.0",
     "tailwindcss": "^3.4.1",
+    "ts-node": "^10.9.2",
     "tsx": "^4.19.2",
-    "typescript": "^5.7.2"
+    "typescript": "^5.7.2",
+    "uuid": "^11.1.0"
   }
 }
