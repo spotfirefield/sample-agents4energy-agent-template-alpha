@@ -5,7 +5,7 @@ import { S3Client, GetObjectCommand } from '@aws-sdk/client-s3';
 import { v4 as uuidv4 } from 'uuid';
 import { getConfiguredAmplifyClient } from '../../../utils/amplifyUtils';
 import { publishResponseStreamChunk } from "../graphql/mutations";
-import { getChatSessionId } from "./toolUtils";
+import { getChatSessionId, getChatSessionPrefix } from "./toolUtils";
 // Environment variables
 const ATHENA_WORKGROUP = process.env.ATHENA_WORKGROUP_NAME || 'pyspark-workgroup';
 const AWS_REGION = process.env.AWS_REGION || 'us-east-1';
@@ -385,23 +385,24 @@ export const pysparkTool = tool(
             await publishProgress(chatSessionId, "✅ Session ready! Setting up environment...", progressIndex++);
             
             // Add pulp library from S3
-            const pulpResult = await executeCalculation(
+            const setS3PrefixResult = await executeCalculation(
                 athenaClient,
                 sessionId,
-                `sc.addPyFile('s3://${process.env.STORAGE_BUCKET_NAME}/pypi/pulp_library.zip')`,
-                "Add pulp library",
+                // `sc.addPyFile('s3://${process.env.STORAGE_BUCKET_NAME}/pypi/pulp_library.zip')`,
+                `chatSessionS3Uri = 's3://${process.env.STORAGE_BUCKET_NAME}/${getChatSessionPrefix()}spark'`,
+                "Set S3 URI",
                 chatSessionId,
                 progressIndex,
                 {
                     maxAttempts: 12, // About 1 minute max wait time
-                    waitMessage: "📚 Adding pulp library from S3...",
-                    successMessage: "✅ Successfully added pulp library",
-                    failureMessage: "Failed to add pulp library",
+                    waitMessage: "📚 Setting S3 URI...",
+                    successMessage: "✅ Successfully set S3 URI",
+                    failureMessage: "Failed to set S3 URI",
                     continueOnFailure: true
                 }
             );
             
-            progressIndex = pulpResult.newProgressIndex;
+            progressIndex = setS3PrefixResult.newProgressIndex;
             
             await publishProgress(chatSessionId, "✅ Submitting your PySpark code for execution...", progressIndex++);
             
@@ -481,6 +482,7 @@ Important notes:
 - The execution results will be returned directly in the response
 - S3 URLs for the full output are also provided if needed
 - Real-time progress updates are sent to the user during execution
+- The chatSessionS3Uri is set to the chat session S3 URI. Output files will be stored here.
 
 Example usage:
 - Perform data analysis using PySpark
@@ -501,7 +503,49 @@ df.show()
 # Perform some analysis
 print("Statistics:")
 df.describe().show()
+
+# Save the DataFrame to S3
+df.write.csv(f"{chatSessionS3Uri}/output/dataframe.csv", header=True, mode="overwrite")
 \`\`\`
+
+Available libraries:
+boto3==1.24.31
+botocore==1.27.31
+certifi==2022.6.15
+charset-normalizer==2.1.0
+cycler==0.11.0
+cython==0.29.30
+docutils==0.19
+fonttools==4.34.4
+idna==3.3
+jmespath==1.0.1
+joblib==1.1.0
+kiwisolver==1.4.4
+matplotlib==3.5.2
+mpmath==1.2.1
+numpy==1.23.1
+packaging==21.3
+pandas==1.4.3
+patsy==0.5.2
+pillow==9.2.0
+plotly==5.9.0
+pmdarima==1.8.5
+pyathena==2.9.6
+pyparsing==3.0.9
+python-dateutil==2.8.2
+pytz==2022.1
+requests==2.28.1
+s3transfer==0.6.0
+scikit-learn==1.1.1
+scipy==1.8.1
+seaborn==0.11.2
+six==1.16.0
+statsmodels==0.13.2
+sympy==1.10.1
+tenacity==8.0.1
+threadpoolctl==3.1.0
+urllib3==1.26.10
+pyarrow==9.0.0
 `,
         schema: pysparkToolSchema,
     }
