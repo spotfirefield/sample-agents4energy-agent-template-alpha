@@ -10,7 +10,7 @@ import { Calculator } from "@langchain/community/tools/calculator";
 import { publishResponseStreamChunk } from "../graphql/mutations";
 
 import { setChatSessionId, s3FileManagementTools } from "./s3ToolBox";
-import { userInputTool, plotDataTool } from "./customToolBox";
+import { userInputTool, plotDataTool, pysparkTool } from "./customToolBox";
 import { Schema } from '../../data/resource';
 
 import { getLangChainChatMessagesStartingWithHumanMessage, getLangChainMessageTextContent, publishMessage, stringifyLimitStringLength } from '../../../utils/langChainUtils';
@@ -49,6 +49,7 @@ export const handler: Schema["invokeAgent"]["functionHandler"] = async (event, c
             new Calculator(),
             userInputTool,
             plotDataTool,
+            pysparkTool,
             ...s3FileManagementTools
         ]
 
@@ -86,6 +87,14 @@ When using the file management tools:
 - To read a file, use the readFile tool with the complete path including the filename
 - Global files are shared across sessions and are read-only
 - When saving reports to file, use the writeFile tool with html formatting by default
+
+When using the PySpark tool:
+- Use the pysparkTool to execute big data processing tasks with Apache Spark
+- The Spark session ('spark') is already initialized - don't try to create a new one
+- You can directly create DataFrames, run transformations, and perform analysis
+- The execution output is returned directly in the response - no need to fetch it separately
+- Use this for data processing, ETL jobs, and analytics at scale
+- You can save important results to CSV files using writeFile if needed
 
 When using the textToTableTool:
 - IMPORTANT: For simple file searches, just use the identifying text (e.g., "15_9_19_A") as the pattern
@@ -194,7 +203,22 @@ When you receive a "No files found" error from textToTableTool:
                                     }
                                 }
 
-                                
+                                // Check if this is a PySpark result and format it for better display
+                                if (streamChunk instanceof ToolMessage && streamChunk.name === 'pysparkTool') {
+                                    try {
+                                        const pysparkResult = JSON.parse(streamChunk.content as string);
+                                        if (pysparkResult.status === "COMPLETED" && pysparkResult.output?.content) {
+                                            // Attach PySpark output data for special rendering
+                                            (streamChunk as any).additional_kwargs = {
+                                                pysparkOutput: pysparkResult.output.content,
+                                                pysparkError: pysparkResult.output.stderr,
+                                                messageContentType: 'pyspark_result'
+                                            };
+                                        }
+                                    } catch (error) {
+                                        console.error("Error processing pysparkTool result:", error);
+                                    }
+                                }
 
                                 await publishMessage({
                                     chatSessionId: event.arguments.chatSessionId,
@@ -238,9 +262,9 @@ When you receive a "No files found" error from textToTableTool:
                 //         message: streamChunk
                 //     })
                 //     break
-                default:
-                    console.log('received stream event:\n', stringifyLimitStringLength(streamEvent))
-                    break
+                // default:
+                //     console.log('received stream event:\n', stringifyLimitStringLength(streamEvent))
+                //     break
             }
         }
 

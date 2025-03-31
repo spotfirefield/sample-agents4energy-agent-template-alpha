@@ -3,6 +3,8 @@ import { expect } from 'chai';
 import { v4 as uuidv4 } from 'uuid';
 import * as fs from 'fs';
 import * as path from 'path';
+import { S3Client, GetObjectCommand } from '@aws-sdk/client-s3';
+import { Readable } from 'stream';
 
 // Read the amplify_outputs.json file
 const amplifyOutputsPath = path.resolve(__dirname, '../../amplify_outputs.json');
@@ -12,6 +14,42 @@ const amplifyOutputsContent = fs.existsSync(amplifyOutputsPath)
 
 const region = amplifyOutputsContent?.auth?.aws_region || 'us-east-1';
 const workgroupName = amplifyOutputsContent?.custom?.athenaWorkgroupName || 'pyspark-workgroup';
+
+// Helper function to convert a readable stream to a string
+async function streamToString(stream: Readable): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    stream.on('data', (chunk) => chunks.push(Buffer.from(chunk)));
+    stream.on('error', reject);
+    stream.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
+  });
+}
+
+// Helper function to read a file from S3
+async function readS3File(s3Uri: string): Promise<string> {
+  try {
+    const s3Client = new S3Client({ region });
+    const s3UriParts = s3Uri.replace('s3://', '').split('/');
+    const bucket = s3UriParts[0];
+    const key = s3UriParts.slice(1).join('/');
+    
+    const command = new GetObjectCommand({
+      Bucket: bucket,
+      Key: key
+    });
+    
+    const response = await s3Client.send(command);
+    
+    if (response.Body instanceof Readable) {
+      return streamToString(response.Body);
+    } else {
+      throw new Error('Response body is not a readable stream');
+    }
+  } catch (error) {
+    console.error('Error reading S3 file:', error);
+    return '';
+  }
+}
 
 describe('Athena PySpark execution', function () {
   this.timeout(300000); // Set timeout to 5 minutes as Athena execution takes time
@@ -165,6 +203,26 @@ print("PySpark execution completed successfully!")
       console.log('PySpark calculation completed successfully!');
       if (resultData) {
         console.log('Result data available:', JSON.stringify(resultData, null, 2));
+        
+        // Fetch the actual content from stdout and stderr
+        const stdoutUrl = resultData?.StdOutS3Uri;
+        const stderrUrl = resultData?.StdErrorS3Uri;
+        
+        if (stdoutUrl) {
+          console.log('\n----- CALCULATION OUTPUT -----');
+          const stdoutContent = await readS3File(stdoutUrl);
+          console.log(stdoutContent);
+          console.log('----- END OF OUTPUT -----\n');
+        }
+        
+        if (stderrUrl) {
+          const stderrContent = await readS3File(stderrUrl);
+          if (stderrContent.trim()) {
+            console.log('\n----- ERROR OUTPUT -----');
+            console.log(stderrContent);
+            console.log('----- END OF ERROR OUTPUT -----\n');
+          }
+        }
       }
     } else {
       console.error(`PySpark calculation did not complete successfully. Final state: ${finalState}`);
