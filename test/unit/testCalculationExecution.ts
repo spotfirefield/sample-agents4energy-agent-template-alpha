@@ -5,51 +5,11 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { S3Client, GetObjectCommand } from '@aws-sdk/client-s3';
 import { Readable } from 'stream';
+import outputs from '../../amplify_outputs.json';
+import { executeCalculation, fetchCalculationOutputs } from '../../amplify/functions/tools/athenaPySparkTool';
 
-// Read the amplify_outputs.json file
-const amplifyOutputsPath = path.resolve(__dirname, '../../amplify_outputs.json');
-const amplifyOutputsContent = fs.existsSync(amplifyOutputsPath) 
-  ? JSON.parse(fs.readFileSync(amplifyOutputsPath, 'utf8'))
-  : {};
-
-const region = amplifyOutputsContent?.auth?.aws_region || 'us-east-1';
-const workgroupName = amplifyOutputsContent?.custom?.athenaWorkgroupName || 'pyspark-workgroup';
-
-// Helper function to convert a readable stream to a string
-async function streamToString(stream: Readable): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const chunks: Buffer[] = [];
-    stream.on('data', (chunk) => chunks.push(Buffer.from(chunk)));
-    stream.on('error', reject);
-    stream.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
-  });
-}
-
-// Helper function to read a file from S3
-async function readS3File(s3Uri: string): Promise<string> {
-  try {
-    const s3Client = new S3Client({ region });
-    const s3UriParts = s3Uri.replace('s3://', '').split('/');
-    const bucket = s3UriParts[0];
-    const key = s3UriParts.slice(1).join('/');
-    
-    const command = new GetObjectCommand({
-      Bucket: bucket,
-      Key: key
-    });
-    
-    const response = await s3Client.send(command);
-    
-    if (response.Body instanceof Readable) {
-      return streamToString(response.Body);
-    } else {
-      throw new Error('Response body is not a readable stream');
-    }
-  } catch (error) {
-    console.error('Error reading S3 file:', error);
-    return '';
-  }
-}
+const region = outputs?.auth?.aws_region || 'us-east-1';
+const workgroupName = outputs?.custom?.athenaWorkgroupName || 'pyspark-workgroup';
 
 describe('Athena PySpark execution', function () {
   this.timeout(300000); // Set timeout to 5 minutes as Athena execution takes time
@@ -86,7 +46,7 @@ describe('Athena PySpark execution', function () {
     // Initial status might be CREATING, we'll poll for IDLE status
     let sessionState = 'CREATING';
     let sessionAttempts = 0;
-    const maxSessionAttempts = 30; // Higher value for session initialization
+    const maxSessionAttempts = 2; // Higher value for session initialization
 
     while (sessionState !== 'IDLE' && sessionState !== 'FAILED' && sessionState !== 'TERMINATED' && sessionAttempts < maxSessionAttempts) {
       await new Promise(resolve => setTimeout(resolve, 5000));
@@ -119,113 +79,90 @@ describe('Athena PySpark execution', function () {
 # Simple PySpark script that doesn't require specific packages
 # The Athena PySpark session automatically initializes the spark session. The variables 'spark' and 'sc' are already defined.
 
-# Create a simple DataFrame
-data = [("Hello",), ("Spark",), ("World",)]
-df = spark.createDataFrame(data, ["word"])
+sc.addPyFile('s3://${outputs.storage.bucket_name}/pypi/pulp_library.zip')
+from pulp import *
+import pulp as pl
+solver_list = pl.listSolvers(onlyAvailable=True)
+print('solvers: ', solver_list)
 
-# Show the results
-print("DataFrame content:")
-df.show()
+x = LpVariable("x", 0, 3)
+y = LpVariable("y", cat="Binary")
+prob = LpProblem("myProblem", LpMinimize)
+prob += x + y <= 2
+prob += -4*x + y
+
+status = prob.solve()
+print("Problem status:", LpStatus[status])
+print("Optimal solution values:")
+print("x =", x.value())
+print("y =", y.value())
+print("Objective value =", value(prob.objective))
 
 print("PySpark execution completed successfully!")
     `;
-
-    // Generate a unique client request token
-    const clientRequestToken = uuidv4();
-
-    // Start the calculation execution
-    const startCommand = new StartCalculationExecutionCommand({
-      SessionId: sessionId,
-      CodeBlock: pySparkCode,
-      Description: 'Test PySpark simple execution',
-      ClientRequestToken: clientRequestToken,
-    });
-
-    console.log('Starting PySpark calculation execution...');
-    const startResponse = await athenaClient.send(startCommand);
     
-    // Log the calculation execution ID
-    expect(startResponse.CalculationExecutionId).to.exist;
-    const calculationId = startResponse.CalculationExecutionId!;
-    console.log(`Calculation execution ID: ${calculationId}`);
+
+
+
+    // For testing purposes, create a mock chat session ID
+    const testChatSessionId = `test-session-${uuidv4()}`;
+    const progressIndex = 0;
+
+    console.log('Running calculation with executeCalculation helper...');
     
-    // Initial status and polling for completion
-    let finalState = 'CREATING';
-    let resultData = null;
-    let attempts = 0;
-    const maxAttempts = 20; // Limit polling attempts
-
-    while (
-      finalState !== 'COMPLETED' &&
-      finalState !== 'FAILED' &&
-      finalState !== 'CANCELED' &&
-      attempts < maxAttempts
-    ) {
-      // Wait 5 seconds between polling
-      await new Promise(resolve => setTimeout(resolve, 5000));
-
-      // Get the calculation execution status
-      const getCommand = new GetCalculationExecutionCommand({
-        CalculationExecutionId: calculationId
-      });
-
-      try {
-        const getResponse = await athenaClient.send(getCommand);
-        
-        // Log the entire response for debugging
-        console.log('Calculation status response:', JSON.stringify(getResponse, null, 2));
-        
-        finalState = getResponse.Status?.State || 'UNKNOWN';
-        
-        if (getResponse.Status?.StateChangeReason) {
-          console.log(`State change reason: ${getResponse.Status.StateChangeReason}`);
-        }
-
-        // Check if there are any result data
-        if (getResponse.Status?.State === 'COMPLETED' && getResponse.Result) {
-          console.log('Result available');
-          // Store the result data if available
-          resultData = getResponse.Result;
-        }
-      } catch (error) {
-        console.error('Error getting calculation status:', error);
+    // Execute the PySpark code using the executeCalculation helper
+    const result = await executeCalculation(
+      athenaClient,
+      sessionId,
+      pySparkCode,
+      'Test PySpark simple execution',
+      testChatSessionId,
+      progressIndex,
+      {
+        maxAttempts: 2,
+        waitMessage: "⏳ Executing test calculation...",
+        successMessage: "✅ Test calculation completed successfully"
       }
-
-      console.log(`Current state: ${finalState} (Attempt ${attempts + 1}/${maxAttempts})`);
-      attempts++;
-    }
-
-    // Check final state
-    console.log(`Final state: ${finalState}`);
+    );
     
-    // For now, just log the result and don't fail the test
-    if (finalState === 'COMPLETED') {
-      console.log('PySpark calculation completed successfully!');
-      if (resultData) {
-        console.log('Result data available:', JSON.stringify(resultData, null, 2));
-        
-        // Fetch the actual content from stdout and stderr
-        const stdoutUrl = resultData?.StdOutS3Uri;
-        const stderrUrl = resultData?.StdErrorS3Uri;
-        
-        if (stdoutUrl) {
-          console.log('\n----- CALCULATION OUTPUT -----');
-          const stdoutContent = await readS3File(stdoutUrl);
-          console.log(stdoutContent);
-          console.log('----- END OF OUTPUT -----\n');
-        }
-        
-        if (stderrUrl) {
-          const stderrContent = await readS3File(stderrUrl);
-          if (stderrContent.trim()) {
-            console.log('\n----- ERROR OUTPUT -----');
-            console.log(stderrContent);
-            console.log('----- END OF ERROR OUTPUT -----\n');
-          }
-        }
+    console.log(`Calculation execution completed with state: ${result.state}`);
+    console.log(`Success: ${result.success}`);
+    
+    if (true) {
+      console.log('Result data available:', JSON.stringify(result.resultData, null, 2));
+      
+      // Fetch and display calculation outputs
+      const outputs = await fetchCalculationOutputs(result.resultData, testChatSessionId, result.newProgressIndex);
+      
+      console.log('\n----- CALCULATION RESULTS -----');
+      
+      if (outputs.stdout) {
+        console.log('\n----- STANDARD OUTPUT -----');
+        console.log(outputs.stdout);
+        console.log('----- END OF STANDARD OUTPUT -----\n');
       }
+      
+      if (outputs.result) {
+        console.log('\n----- CALCULATION RESULT -----');
+        console.log(outputs.result);
+        console.log('----- END OF CALCULATION RESULT -----\n');
+      }
+      
+      if (outputs.stderr && outputs.stderr.trim()) {
+        console.log('\n----- ERROR OUTPUT -----');
+        console.log(outputs.stderr);
+        console.log('----- END OF ERROR OUTPUT -----\n');
+      }
+      
+      console.log('\nS3 Output Locations:');
+      console.log(`Stdout: ${outputs.s3.stdout || 'N/A'}`);
+      console.log(`Result: ${outputs.s3.result || 'N/A'}`);
+      console.log(`Stderr: ${outputs.s3.stderr || 'N/A'}`);
+      
+      console.log('----- END OF CALCULATION RESULTS -----\n');
     } else {
-      console.error(`PySpark calculation did not complete successfully. Final state: ${finalState}`);
+      console.error(`PySpark calculation did not complete successfully. Final state: ${result.state}`);
+      console.error('No result data available to display outputs');
     }
     
     // Mark the test as passed so we can see full output
