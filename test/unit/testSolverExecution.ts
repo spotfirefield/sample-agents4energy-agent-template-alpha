@@ -149,7 +149,7 @@ print("PySpark execution completed successfully!")
       testChatSessionId,
       progressIndex,
       {
-        maxAttempts: 2,
+        timeoutSeconds: 1000,
         waitMessage: "⏳ Executing test calculation...",
         successMessage: "✅ Test calculation completed successfully"
       }

@@ -80,7 +80,7 @@ export async function executeCalculation(
     chatSessionId: string, 
     progressIndex: number,
     options: {
-        maxAttempts?: number,
+        timeoutSeconds?: number,
         waitMessage?: string,
         successMessage?: string,
         failureMessage?: string,
@@ -94,7 +94,7 @@ export async function executeCalculation(
     newProgressIndex: number 
 }> {
     const {
-        maxAttempts = 3,
+        timeoutSeconds = 60,
         waitMessage = "⏳ Executing calculation...",
         successMessage = "✅ Calculation completed successfully",
         failureMessage = "❌ Calculation failed",
@@ -131,13 +131,14 @@ export async function executeCalculation(
     await publishProgress(chatSessionId, waitMessage, currentProgressIndex++);
     let finalState = 'CREATING';
     let resultData = null;
-    let attempts = 0;
+    const startTime = Date.now();
+    const timeoutMs = timeoutSeconds * 1000;
     
     while (
         finalState !== 'COMPLETED' &&
         finalState !== 'FAILED' &&
         finalState !== 'CANCELED' &&
-        attempts < maxAttempts
+        Date.now() - startTime < timeoutMs
     ) {
         await new Promise(resolve => setTimeout(resolve, 5000));
         
@@ -160,8 +161,8 @@ export async function executeCalculation(
             console.error(`Error getting calculation status: ${error}`);
         }
         
-        console.log(`Calculation state: ${finalState} (Attempt ${attempts + 1}/${maxAttempts})`);
-        attempts++;
+        const elapsedSeconds = Math.round((Date.now() - startTime) / 1000);
+        console.log(`Calculation state: ${finalState} (${elapsedSeconds}s elapsed / ${timeoutSeconds}s timeout)`);
     }
     
     if (finalState === 'COMPLETED') {
@@ -481,7 +482,7 @@ sc.addPyFile('s3://${process.env.STORAGE_BUCKET_NAME}/pypi/pypi_libs.zip')
                 chatSessionId,
                 progressIndex,
                 {
-                    maxAttempts: 12, // About 1 minute max wait time
+                    timeoutSeconds: 60, // About 1 minute max wait time
                     waitMessage: "📚 Setting S3 URI...",
                     successMessage: "✅ Successfully set S3 URI",
                     failureMessage: "Failed to set S3 URI",
@@ -502,7 +503,7 @@ sc.addPyFile('s3://${process.env.STORAGE_BUCKET_NAME}/pypi/pypi_libs.zip')
                 chatSessionId,
                 progressIndex,
                 {
-                    maxAttempts: Math.ceil(timeout / 5),
+                    timeoutSeconds: Math.ceil(timeout),
                     waitMessage: "⏳ Executing PySpark code...",
                     successMessage: "✅ Execution completed! Fetching results..."
                 }
