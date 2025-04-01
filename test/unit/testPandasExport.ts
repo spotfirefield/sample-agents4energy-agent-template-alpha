@@ -78,9 +78,17 @@ describe('Athena PySpark execution', function () {
 # Basic Spark example
 
 sc.addPyFile('s3://${outputs.storage.bucket_name}/pypi/pypi_libs.zip')
+chatSessionS3Uri = 's3://${outputs.storage.bucket_name}/chatSessionArtifacts/sessionId=test/spark'
 
 import os
 import boto3
+
+def uploadDfToS3(df, file_path):
+    local_file_path = 'tmp.csv'
+    df.to_csv(local_file_path, header=True)
+    s3_client = boto3.client('s3', region_name='us-east-1')
+    s3_client.upload_file(local_file_path, '${outputs.storage.bucket_name}', chatSessionS3Uri + '/' + file_path)
+
 from pyspark.sql import SparkSession
 
 data = [
@@ -97,20 +105,7 @@ df.show()
 # Convert the df to Pandas and export the results to a CSV file
 pandas_df = df.toPandas()
 
-# First save locally
-local_file = "output.csv"
-pandas_df.to_csv(local_file, index=False)
-
-# Then use boto3 to upload to S3
-s3_client = boto3.client('s3', region_name='${region}')
-bucket_name = '${outputs.storage.bucket_name}'
-s3_key = 'test/output.csv'
-
-try:
-    s3_client.upload_file(local_file, bucket_name, s3_key)
-    print(f"Successfully uploaded {local_file} to s3://{bucket_name}/{s3_key}")
-except Exception as e:
-    print(f"Error uploading to S3: {str(e)}")
+uploadDfToS3(pandas_df, 'output.csv')
 
 print("PySpark execution completed successfully!")
     `;
