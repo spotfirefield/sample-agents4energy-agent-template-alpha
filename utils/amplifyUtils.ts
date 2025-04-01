@@ -2,7 +2,8 @@ import { Amplify } from "aws-amplify";
 import { generateClient } from "aws-amplify/data";
 import { Schema } from "../amplify/data/resource";
 import { Message } from "./types";
-
+import outputs from "../amplify_outputs.json";
+import { STSClient } from "@aws-sdk/client-sts";
 // const amplifyClient = generateClient<Schema>();
 
 export const getConfiguredAmplifyClient = () => {
@@ -39,6 +40,32 @@ export const getConfiguredAmplifyClient = () => {
   return amplifyClient;
 }
 
+export const setAmplifyEnvVars = async () => {
+  // Import required dependencies if not already available
+  try {
+    process.env.AMPLIFY_DATA_GRAPHQL_ENDPOINT = outputs.data.url
+    process.env.AWS_DEFAULT_REGION = outputs.auth.aws_region
+
+    // Get credentials using STS
+    const stsClient = new STSClient({ region: outputs.auth.aws_region});
+    const credentials = await stsClient.config.credentials();
+    
+    // Set AWS credentials environment variables
+    process.env.AWS_ACCESS_KEY_ID = credentials.accessKeyId;
+    process.env.AWS_SECRET_ACCESS_KEY = credentials.secretAccessKey;
+    process.env.AWS_SESSION_TOKEN = credentials.sessionToken;
+    
+    return {
+      success: true
+    };
+  } catch (error) {
+    console.error("Error setting Amplify environment variables:", error);
+    return {
+      success: false,
+      error
+    };
+  }
+}
 
 export const combineAndSortMessages = ((arr1: Array<Message>, arr2: Array<Message>) => {
   const combinedMessages = [...arr1, ...arr2]

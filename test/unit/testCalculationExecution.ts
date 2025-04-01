@@ -22,7 +22,7 @@ describe('Athena PySpark execution', function () {
     console.log(`Using Athena workgroup: ${workgroupName}`);
   });
 
-  it('should execute a PySpark program using StartCalculationExecution', async () => {
+  it('should execute a PySpark program with exports a csv using pandas', async () => {
     // First, start a session
     const sessionToken = uuidv4();
     
@@ -111,7 +111,7 @@ print("PySpark execution completed successfully!")
       testChatSessionId,
       progressIndex,
       {
-        maxAttempts: 2,
+        timeoutSeconds: 20,
         waitMessage: "⏳ Executing test calculation...",
         successMessage: "✅ Test calculation completed successfully"
       }
