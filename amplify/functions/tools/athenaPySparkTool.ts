@@ -475,14 +475,27 @@ export const pysparkTool = tool(
                 athenaClient,
                 sessionId,
                 `
-chatSessionS3Uri = 's3://${process.env.STORAGE_BUCKET_NAME}/${getChatSessionPrefix()}spark'
+chatSessionS3Prefix = '${getChatSessionPrefix()}'
 # sc.addPyFile('s3://${process.env.STORAGE_BUCKET_NAME}/pypi/pypi_libs.zip')
 
 def uploadDfToS3(df, file_path):
-    local_file_path = 'tmp.csv'
-    df.to_csv(local_file_path, header=True)
+    import io
+    import boto3
+    
+    # Convert dataframe to CSV in memory
+    csv_buffer = io.StringIO()
+    df.toPandas().to_csv(csv_buffer, header=True, index=False)
+    
+    # Get the CSV content as bytes
+    csv_content = csv_buffer.getvalue().encode('utf-8')
+    
+    # Upload directly to S3 from memory
     s3_client = boto3.client('s3', region_name='us-east-1')
-    s3_client.upload_file(local_file_path, '${process.env.STORAGE_BUCKET_NAME}', chatSessionS3Uri + '/' + file_path)
+    s3_client.put_object(
+        Body=csv_content,
+        Bucket='${process.env.STORAGE_BUCKET_NAME}',
+        Key=chatSessionS3Prefix + file_path
+    )
 
                 `,
                 "Set S3 URI",
@@ -577,7 +590,7 @@ Important notes:
 - The execution results will be returned directly in the response
 - S3 URLs for the full output are also provided if needed
 - Real-time progress updates are sent to the user during execution
-- The chatSessionS3Uri is set to the chat session S3 URI. Output files will be stored here.
+- uploadDfToS3 is a helper function that uploads a DataFrame to S3
 
 Example usage:
 - Perform data analysis using PySpark
@@ -600,7 +613,7 @@ print("Statistics:")
 df.describe().show()
 
 # Save the DataFrame to S3
-df.write.csv(f"{chatSessionS3Uri}/output/dataframe.csv", header=True, mode="overwrite")
+uploadDfToS3(df, 'output/dataframe.csv')
 \`\`\`
 
 Available libraries:

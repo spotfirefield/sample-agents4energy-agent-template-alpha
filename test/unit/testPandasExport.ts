@@ -85,7 +85,7 @@ import boto3
 
 def uploadDfToS3(df, file_path):
     local_file_path = 'tmp.csv'
-    df.to_csv(local_file_path, header=True)
+    df.toPandas().to_csv(local_file_path, header=True)
     s3_client = boto3.client('s3', region_name='us-east-1')
     s3_client.upload_file(local_file_path, '${outputs.storage.bucket_name}', chatSessionS3Uri + '/' + file_path)
 
@@ -102,10 +102,7 @@ df = spark.createDataFrame(data, ["text"])
 # Show the results
 df.show()
 
-# Convert the df to Pandas and export the results to a CSV file
-pandas_df = df.toPandas()
-
-uploadDfToS3(pandas_df, 'output.csv')
+uploadDfToS3(df, 'output.csv')
 
 print("PySpark execution completed successfully!")
     `;
