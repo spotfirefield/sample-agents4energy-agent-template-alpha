@@ -3,7 +3,7 @@ import { expect } from 'chai';
 import { v4 as uuidv4 } from 'uuid';
 import outputs from '../../amplify_outputs.json';
 import { executeCalculation, fetchCalculationOutputs } from '../../amplify/functions/tools/athenaPySparkTool';
-
+import { setAmplifyEnvVars } from '../../utils/amplifyUtils';
 const region = outputs?.auth?.aws_region || 'us-east-1';
 const workgroupName = outputs?.custom?.athenaWorkgroupName || 'pyspark-workgroup';
 
@@ -12,10 +12,11 @@ describe('Athena PySpark execution', function () {
 
   let athenaClient: AthenaClient;
 
-  before(() => {
+  before(async () => {
     // Create Athena client
     athenaClient = new AthenaClient({ region });
     console.log(`Using Athena workgroup: ${workgroupName}`);
+    await setAmplifyEnvVars();
   });
 
   it('should execute a PySpark program using StartCalculationExecution', async () => {
