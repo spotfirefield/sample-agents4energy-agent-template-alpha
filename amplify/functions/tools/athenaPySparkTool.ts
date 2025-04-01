@@ -473,8 +473,10 @@ export const pysparkTool = tool(
             const setS3PrefixResult = await executeCalculation(
                 athenaClient,
                 sessionId,
-                // `sc.addPyFile('s3://${process.env.STORAGE_BUCKET_NAME}/pypi/pulp_library.zip')`,
-                `chatSessionS3Uri = 's3://${process.env.STORAGE_BUCKET_NAME}/${getChatSessionPrefix()}spark'`,
+                `
+chatSessionS3Uri = 's3://${process.env.STORAGE_BUCKET_NAME}/${getChatSessionPrefix()}spark'
+sc.addPyFile('s3://${process.env.STORAGE_BUCKET_NAME}/pypi/pypi_libs.zip')
+                `,
                 "Set S3 URI",
                 chatSessionId,
                 progressIndex,
