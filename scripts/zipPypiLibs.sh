@@ -25,14 +25,8 @@ RUN apt-get update && apt-get install -y zip unzip build-essential
 # Create directory structure
 RUN mkdir -p /tmp/unpacked
 
-# Install libraries with all their dependencies
-RUN python -m pip install --upgrade pip && \
-    python -m pip install fsspec s3fs boto3 botocore pandas --no-cache-dir && \
-    cp -r /usr/local/lib/python3.9/site-packages/* /tmp/unpacked/
-
-# Make sure we include all botocore data files
-RUN find /usr/local/lib/python3.9/site-packages/botocore/data -type d -exec mkdir -p /tmp/unpacked/botocore/data/{} \; && \
-    cp -r /usr/local/lib/python3.9/site-packages/botocore/data/* /tmp/unpacked/botocore/data/
+# Install fsspec with dependencies
+RUN pip install fsspec s3fs --target=/tmp/unpacked
 
 # Zip the package
 RUN cd /tmp/unpacked && \
@@ -52,7 +46,7 @@ docker stop pypi_libs_packager-container
 
 # Check if the zip file was created
 if [ -f "pypi_libs.zip" ]; then
-    echo "Libraries have been packaged into /tmp/pypi_libs/pypi_libs.zip"
+    echo "fsspec library has been packaged into /tmp/pypi_libs/pypi_libs.zip"
 else
     echo "Error: Failed to generate pypi_libs.zip"
     exit 1
