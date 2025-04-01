@@ -77,7 +77,7 @@ describe('Athena PySpark execution', function () {
 # The Athena PySpark session automatically initializes the spark session. The variables 'spark' and 'sc' are already defined.
 # Basic Spark example
 
-sc.addPyFile('s3://${outputs.storage.bucket_name}/pypi/pypi_libs.zip')
+#sc.addPyFile('s3://${outputs.storage.bucket_name}/pypi/pypi_libs.zip')
 chatSessionS3Uri = 's3://${outputs.storage.bucket_name}/chatSessionArtifacts/sessionId=test/spark'
 
 import os

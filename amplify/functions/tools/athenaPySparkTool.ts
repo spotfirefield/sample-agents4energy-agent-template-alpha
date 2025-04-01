@@ -476,7 +476,14 @@ export const pysparkTool = tool(
                 sessionId,
                 `
 chatSessionS3Uri = 's3://${process.env.STORAGE_BUCKET_NAME}/${getChatSessionPrefix()}spark'
-sc.addPyFile('s3://${process.env.STORAGE_BUCKET_NAME}/pypi/pypi_libs.zip')
+# sc.addPyFile('s3://${process.env.STORAGE_BUCKET_NAME}/pypi/pypi_libs.zip')
+
+def uploadDfToS3(df, file_path):
+    local_file_path = 'tmp.csv'
+    df.to_csv(local_file_path, header=True)
+    s3_client = boto3.client('s3', region_name='us-east-1')
+    s3_client.upload_file(local_file_path, '${process.env.STORAGE_BUCKET_NAME}', chatSessionS3Uri + '/' + file_path)
+
                 `,
                 "Set S3 URI",
                 chatSessionId,

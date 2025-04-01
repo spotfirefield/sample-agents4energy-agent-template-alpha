@@ -26,7 +26,7 @@ RUN apt-get update && apt-get install -y zip unzip build-essential
 RUN mkdir -p /tmp/unpacked
 
 # Install fsspec with dependencies
-RUN pip install fsspec s3fs --target=/tmp/unpacked
+RUN pip install fsspec s3fs boto3 --target=/tmp/unpacked
 
 # Zip the package
 RUN cd /tmp/unpacked && \
