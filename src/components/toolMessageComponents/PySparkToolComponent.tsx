@@ -216,10 +216,10 @@ export const PySparkToolComponent = ({
               ? theme.palette.error.dark 
               : theme.palette.text.primary
         }}>
-          PySpark {status.toLowerCase()}
+          PySpark {status ? status.toLowerCase() : 'unknown'}
         </Typography>
         
-        <Tooltip title={message || status} arrow placement="top">
+        <Tooltip title={message || status || ''} arrow placement="top">
           <Typography 
             variant="body2" 
             color="textSecondary" 

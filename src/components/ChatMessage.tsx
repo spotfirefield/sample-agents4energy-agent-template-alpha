@@ -1,5 +1,5 @@
 import { useTheme, Theme } from '@mui/material/styles';
-import { Button, Typography, Tooltip } from '@mui/material';
+import { Button, Typography, Tooltip, CircularProgress } from '@mui/material';
 import CalculateIcon from '@mui/icons-material/Calculate';
 import BuildIcon from '@mui/icons-material/Build';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
@@ -319,6 +319,11 @@ const ChatMessage = (params: {
     // Use a ref to track which messages we've already processed
     // to prevent multiple refreshes for the same message
     const processedMessageRef = useRef<{[key: string]: boolean}>({});
+    
+    // State to track if deletion is in progress
+    const [isDeletingMessages, setIsDeletingMessages] = useState<boolean>(false);
+    // State to track deletion progress
+    const [deletionProgress, setDeletionProgress] = useState<number>(0);
 
     // Effect to handle file operation updates
     useEffect(() => {
@@ -812,24 +817,65 @@ const ChatMessage = (params: {
                         </ReactMarkdown>
                     </div>
                     {params.onRegenerateMessage && (
-                        <Button 
-                            size="small"
-                            onClick={() => params.onRegenerateMessage!(
-                                params.message.id || '', 
-                                params.message.content?.text || ''
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <Button 
+                                size="small"
+                                onClick={() => {
+                                    // Set deleting state to true when retry is clicked
+                                    setIsDeletingMessages(true);
+                                    
+                                    // Create a fake progress simulation
+                                    const startTime = Date.now();
+                                    const expectedDuration = 1500; // 1.5 seconds for deletion animation
+                                    
+                                    const progressInterval = setInterval(() => {
+                                        const elapsedTime = Date.now() - startTime;
+                                        const progress = Math.min(100, Math.round((elapsedTime / expectedDuration) * 100));
+                                        setDeletionProgress(progress);
+                                        
+                                        if (progress >= 100) {
+                                            clearInterval(progressInterval);
+                                            // Call the regenerate function
+                                            params.onRegenerateMessage!(
+                                                params.message.id || '', 
+                                                params.message.content?.text || ''
+                                            );
+                                            // Reset states after deletion is complete
+                                            setTimeout(() => {
+                                                setIsDeletingMessages(false);
+                                                setDeletionProgress(0);
+                                            }, 100);
+                                        }
+                                    }, 50);
+                                }}
+                                startIcon={<ReplayIcon fontSize="small" />}
+                                disabled={isDeletingMessages}
+                                sx={{ 
+                                    mt: 0.5, 
+                                    fontSize: '0.75rem',
+                                    color: isDeletingMessages ? theme.palette.grey[400] : theme.palette.grey[700],
+                                    '&:hover': {
+                                        backgroundColor: theme.palette.grey[100]
+                                    }
+                                }}
+                            >
+                                {isDeletingMessages ? 'Deleting...' : 'Retry'}
+                            </Button>
+                            
+                            {isDeletingMessages && (
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                    <CircularProgress 
+                                        size={16} 
+                                        thickness={5}
+                                        variant="determinate" 
+                                        value={deletionProgress} 
+                                    />
+                                    <Typography variant="caption" color="text.secondary">
+                                        {deletionProgress}%
+                                    </Typography>
+                                </div>
                             )}
-                            startIcon={<ReplayIcon fontSize="small" />}
-                            sx={{ 
-                                mt: 0.5, 
-                                fontSize: '0.75rem',
-                                color: theme.palette.grey[700],
-                                '&:hover': {
-                                    backgroundColor: theme.palette.grey[100]
-                                }
-                            }}
-                        >
-                            Retry
-                        </Button>
+                        </div>
                     )}
                 </div>
             )
