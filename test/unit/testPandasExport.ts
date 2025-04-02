@@ -2,7 +2,8 @@ import { AthenaClient, StartCalculationExecutionCommand, GetCalculationExecution
 import { expect } from 'chai';
 import { v4 as uuidv4 } from 'uuid';
 import outputs from '../../amplify_outputs.json';
-import { executeCalculation, fetchCalculationOutputs } from '../../amplify/functions/tools/athenaPySparkTool';
+import { executeCalculation, fetchCalculationOutputs, getPySparkHelperScript } from '../../amplify/functions/tools/athenaPySparkTool';
+import { setChatSessionId } from '../../amplify/functions/tools/toolUtils';
 import { setAmplifyEnvVars } from '../../utils/amplifyUtils';
 const region = outputs?.auth?.aws_region || 'us-east-1';
 const workgroupName = outputs?.custom?.athenaWorkgroupName || 'pyspark-workgroup';
@@ -71,24 +72,14 @@ describe('Athena PySpark execution', function () {
       return;
     }
 
-    // Create a simple PySpark program with PuLP
-    const pySparkCode = `
-# PySpark script using PuLP with minimal dependencies
+    // Set the chat session ID and storage bucket name
+    setChatSessionId('test-session-1');
+    process.env.STORAGE_BUCKET_NAME = outputs.storage.bucket_name;
+
+    const pySparkCode = `${getPySparkHelperScript()}
+# PySpark test script
 # The Athena PySpark session automatically initializes the spark session. The variables 'spark' and 'sc' are already defined.
 # Basic Spark example
-
-#sc.addPyFile('s3://${outputs.storage.bucket_name}/pypi/pypi_libs.zip')
-chatSessionS3Uri = 's3://${outputs.storage.bucket_name}/chatSessionArtifacts/sessionId=test/spark'
-
-import os
-import boto3
-
-def uploadDfToS3(df, file_path):
-    local_file_path = 'tmp.csv'
-    df.toPandas().to_csv(local_file_path, header=True)
-    s3_client = boto3.client('s3', region_name='us-east-1')
-    s3_client.upload_file(local_file_path, '${outputs.storage.bucket_name}', chatSessionS3Uri + '/' + file_path)
-
 from pyspark.sql import SparkSession
 
 data = [

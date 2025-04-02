@@ -835,16 +835,13 @@ const ChatMessage = (params: {
                                         
                                         if (progress >= 100) {
                                             clearInterval(progressInterval);
-                                            // Call the regenerate function
+                                            // Reset states and call regenerate function simultaneously
+                                            setIsDeletingMessages(false);
+                                            setDeletionProgress(0);
                                             params.onRegenerateMessage!(
                                                 params.message.id || '', 
                                                 params.message.content?.text || ''
                                             );
-                                            // Reset states after deletion is complete
-                                            setTimeout(() => {
-                                                setIsDeletingMessages(false);
-                                                setDeletionProgress(0);
-                                            }, 100);
                                         }
                                     }, 50);
                                 }}
