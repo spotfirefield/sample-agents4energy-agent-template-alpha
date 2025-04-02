@@ -10,6 +10,108 @@ import { getChatSessionId, getChatSessionPrefix } from "./toolUtils";
 const ATHENA_WORKGROUP = process.env.ATHENA_WORKGROUP_NAME || 'pyspark-workgroup';
 const AWS_REGION = process.env.AWS_REGION || 'us-east-1';
 
+export const getPySparkHelperScript = () => `
+chatSessionS3Prefix = '${getChatSessionPrefix()}'
+# sc.addPyFile('s3://${process.env.STORAGE_BUCKET_NAME}/pypi/pypi_libs.zip')
+
+def uploadDfToS3(df, file_path):
+    """
+    Save a PySpark DataFrame to S3 as a CSV file.
+    
+    This function converts the DataFrame to Pandas first, then saves it as a CSV file in memory
+    before uploading to S3. This approach ensures proper handling of all data types and maintains
+    column headers.
+    
+    Args:
+        df (pyspark.sql.DataFrame): The PySpark DataFrame to save
+        file_path (str): Path where the CSV should be saved, relative to the chat session directory
+                        Example: 'output/data.csv' or 'results/analysis.csv'
+    
+    Note:
+        - The function automatically prepends the chat session prefix to the file path
+        - Headers are included in the CSV output
+        - Index is not included in the output to maintain data consistency
+        - The file is streamed directly to S3 without saving to disk
+    """
+    import io
+    import boto3
+    
+    # Convert PySpark DataFrame to Pandas and write to in-memory buffer
+    csv_buffer = io.StringIO()
+    df.toPandas().to_csv(csv_buffer, header=True, index=False)
+    
+    # Get the CSV content and encode as bytes for S3 upload
+    csv_content = csv_buffer.getvalue().encode('utf-8')
+    
+    # Initialize S3 client and upload the file
+    s3_client = boto3.client('s3')
+    s3_client.put_object(
+        Body=csv_content,
+        Bucket='${process.env.STORAGE_BUCKET_NAME}',
+        Key=chatSessionS3Prefix + file_path
+    )
+
+def getDataFrameFromS3(file_path):
+    """
+    Read a CSV file from S3 and return it as a PySpark DataFrame.
+    
+    Args:
+        file_path (str): Path to the CSV file relative to the chat session directory
+        
+    Returns:
+        pyspark.sql.DataFrame: A PySpark DataFrame containing the CSV data
+    """
+    # Construct the full S3 path
+    full_s3_path = f"s3://${process.env.STORAGE_BUCKET_NAME}/{chatSessionS3Prefix}{file_path}"
+    
+    # Use spark.read to read the CSV file directly
+    df = spark.read.option("header", "true") \
+                   .option("inferSchema", "true") \
+                   .csv(full_s3_path)
+    
+    return df
+
+def uploadFileToS3(file_path, s3_path):
+    """
+    Upload a file to S3.
+    
+    Args:
+        file_path (str): Path to the local file to upload
+        s3_path (str): Path to the S3 file to upload to
+    
+    Note:
+        - The file will be uploaded to the chat session's S3 directory
+        - The S3 path will be the chat session prefix + the s3_path
+    """
+    import boto3
+    import os
+    
+    s3_client = boto3.client('s3')
+    
+    # Get file metadata
+    content_type = None
+    if s3_path.endswith('.html'):
+        content_type = 'text/html'
+    elif s3_path.endswith('.csv'):
+        content_type = 'text/csv'
+    elif s3_path.endswith('.json'):
+        content_type = 'application/json'
+    elif s3_path.endswith('.txt'):
+        content_type = 'text/plain'
+    
+    # Set extra args if content type is determined
+    extra_args = {}
+    if content_type:
+        extra_args['ContentType'] = content_type
+    
+    s3_client.upload_file(
+        file_path, 
+        '${process.env.STORAGE_BUCKET_NAME}', 
+        chatSessionS3Prefix + s3_path,
+        ExtraArgs=extra_args
+    )
+`
+
 // Helper function to read a file from S3
 async function readS3File(s3Uri: string): Promise<string> {
     try {
@@ -310,7 +412,8 @@ async function findExistingSession(athenaClient: AthenaClient, chatSessionId: st
         // which includes the chat session ID as part of the description
         const matchingSession = response.Sessions.find(session => 
             session.Description?.includes(`[ChatSessionID:${chatSessionId}]`) &&
-            session.SessionId
+            session.SessionId &&
+            session.Status?.State !== 'TERMINATED'  // Exclude terminated sessions
         );
         
         if (matchingSession && matchingSession.SessionId) {
@@ -327,24 +430,25 @@ async function findExistingSession(athenaClient: AthenaClient, chatSessionId: st
 }
 
 // Helper function to check if a session is active and usable
-async function isSessionActive(athenaClient: AthenaClient, sessionId: string): Promise<boolean> {
+async function isSessionActive(athenaClient: AthenaClient, sessionId: string): Promise<{isActive: boolean, state: string}> {
     try {
         const getSessionStatusCommand = new GetSessionStatusCommand({
             SessionId: sessionId
         });
         
         const response = await athenaClient.send(getSessionStatusCommand);
+        const state = response.Status?.State || 'UNKNOWN';
         
-        if (response.Status?.State === 'IDLE') {
+        if (state === 'IDLE') {
             console.log(`Session ${sessionId} is active and idle`);
-            return true;
+            return { isActive: true, state };
         }
         
-        console.log(`Session ${sessionId} is not in IDLE state, current state: ${response.Status?.State}`);
-        return false;
+        console.log(`Session ${sessionId} is not in IDLE state, current state: ${state}`);
+        return { isActive: false, state };
     } catch (error) {
         console.error(`Error checking session status for ${sessionId}:`, error);
-        return false;
+        return { isActive: false, state: 'ERROR' };
     }
 }
 
@@ -360,6 +464,7 @@ export const pysparkTool = tool(
         const { code, timeout = 300, description = "PySpark execution" } = params;
         let progressIndex = 0;
         const chatSessionId = getChatSessionId();
+        let sessionId: string | null = null;
         if (!chatSessionId) {
             throw new Error("Chat session ID not found");
         }
@@ -372,22 +477,26 @@ export const pysparkTool = tool(
             
             // Try to find an existing active session first
             await publishProgress(chatSessionId, "🔍 Checking for existing session...", progressIndex++);
-            let sessionId: string | null = null;
             
             // First look for an existing session for this chat session
             const existingSessionId = await findExistingSession(athenaClient, chatSessionId);
             
+            // Track the state of any existing session
+            let existingSessionState = '';
+            
             if (existingSessionId) {
                 // Check if the session is still active
-                const isActive = await isSessionActive(athenaClient, existingSessionId);
+                const { isActive, state } = await isSessionActive(athenaClient, existingSessionId);
+                existingSessionState = state;
                 
                 if (isActive) {
                     sessionId = existingSessionId;
                     await publishProgress(chatSessionId, `✅ Reusing existing Athena session (faster execution)`, progressIndex++);
                     console.log(`Reusing existing active session: ${sessionId} for chat session: ${chatSessionId}`);
                 } else {
-                    await publishProgress(chatSessionId, `⚠️ Found existing session but it's no longer active, creating a new one...`, progressIndex++);
-                    console.log(`Found session ${existingSessionId} but it's not in IDLE state, will create new session`);
+                    const stateMessage = state === 'TERMINATED' ? 'terminated' : 'no longer active';
+                    await publishProgress(chatSessionId, `⚠️ Found existing session but it's ${stateMessage}, creating a new one... (Previous Session ID: ${existingSessionId})`, progressIndex++);
+                    console.log(`Found session ${existingSessionId} but it's in ${state} state, will create new session`);
                 }
             }
             
@@ -395,8 +504,11 @@ export const pysparkTool = tool(
             if (!sessionId) {
                 await publishProgress(chatSessionId, "🔄 Creating new Athena session...", progressIndex++);
                 
-                // Use chatSessionId as the sessionToken for reuse
-                const sessionToken = chatSessionId;
+                // Generate a new session token if previous session was terminated
+                const sessionToken = existingSessionId && existingSessionState === 'TERMINATED' ? 
+                    `${chatSessionId}-${uuidv4()}` : // Create new unique token for terminated sessions
+                    chatSessionId; // Use chatSessionId as token for new sessions
+                
                 const startSessionCommand = new StartSessionCommand({
                     WorkGroup: ATHENA_WORKGROUP,
                     Description: `Session for ${description} [ChatSessionID:${chatSessionId}]`,
@@ -438,7 +550,11 @@ export const pysparkTool = tool(
                     try {
                         const getSessionStatusResponse = await athenaClient.send(getSessionStatusCommand);
                         sessionState = getSessionStatusResponse.Status?.State || 'UNKNOWN';
+                        const stateChangeReason = getSessionStatusResponse.Status?.StateChangeReason;
                         console.log(`Current session state: ${sessionState} (Attempt ${sessionAttempts + 1}/${maxSessionAttempts})`);
+                        if (stateChangeReason) {
+                            console.log(`State change reason: ${stateChangeReason}`);
+                        }
                         
                         // Calculate percentage for progress updates
                         const percentage = Math.round((sessionAttempts / maxSessionAttempts) * 100);
@@ -447,7 +563,7 @@ export const pysparkTool = tool(
                         if (percentage - lastReportedPercentage >= 10) {
                             await publishProgress(
                                 chatSessionId, 
-                                `⏳ Initializing session: ${sessionState} (${percentage}% complete)`, 
+                                `⏳ Initializing session: ${sessionState}${stateChangeReason ? ` (Reason: ${stateChangeReason})` : ''} (${percentage}% complete)`, 
                                 progressIndex
                             );
                             lastReportedPercentage = percentage;
@@ -460,59 +576,51 @@ export const pysparkTool = tool(
                 }
                 
                 if (sessionState !== 'IDLE') {
-                    await publishProgress(chatSessionId, `❌ Session failed to reach ready state: ${sessionState}`, progressIndex++);
+                    const finalStatusCommand = new GetSessionStatusCommand({
+                        SessionId: sessionId
+                    });
+                    let failureReason = '';
+                    try {
+                        const finalStatus = await athenaClient.send(finalStatusCommand);
+                        if (finalStatus.Status?.StateChangeReason) {
+                            failureReason = ` (Reason: ${finalStatus.Status.StateChangeReason})`;
+                        }
+                    } catch (error) {
+                        console.error('Error getting final session status:', error);
+                    }
+                    
+                    await publishProgress(chatSessionId, `❌ Session failed to reach ready state: ${sessionState}${failureReason} (Session ID: ${sessionId})`, progressIndex++);
                     return JSON.stringify({
                         error: "Session did not reach IDLE state",
-                        state: sessionState
+                        state: sessionState,
+                        stateChangeReason: failureReason.replace(' (Reason: ', '').replace(')', '') || undefined,
+                        sessionId: sessionId
                     });
                 }
             }
             
-            await publishProgress(chatSessionId, "✅ Session ready! Setting up environment...", progressIndex++);
+            await publishProgress(chatSessionId, `✅ Session ready! Setting up environment... (Session ID: ${sessionId})`, progressIndex++);
             
             // Add pulp library from S3
             const setS3PrefixResult = await executeCalculation(
                 athenaClient,
                 sessionId,
-                `
-chatSessionS3Prefix = '${getChatSessionPrefix()}'
-# sc.addPyFile('s3://${process.env.STORAGE_BUCKET_NAME}/pypi/pypi_libs.zip')
-
-def uploadDfToS3(df, file_path):
-    import io
-    import boto3
-    
-    # Convert dataframe to CSV in memory
-    csv_buffer = io.StringIO()
-    df.toPandas().to_csv(csv_buffer, header=True, index=False)
-    
-    # Get the CSV content as bytes
-    csv_content = csv_buffer.getvalue().encode('utf-8')
-    
-    # Upload directly to S3 from memory
-    s3_client = boto3.client('s3', region_name='us-east-1')
-    s3_client.put_object(
-        Body=csv_content,
-        Bucket='${process.env.STORAGE_BUCKET_NAME}',
-        Key=chatSessionS3Prefix + file_path
-    )
-
-                `,
+                getPySparkHelperScript(),
                 "Set S3 URI",
                 chatSessionId,
                 progressIndex,
                 {
                     timeoutSeconds: 60, // About 1 minute max wait time
-                    waitMessage: "📚 Setting S3 URI...",
-                    successMessage: "✅ Successfully set S3 URI",
-                    failureMessage: "Failed to set S3 URI",
+                    waitMessage: `📚 Setting S3 URI... (Session ID: ${sessionId})`,
+                    successMessage: `✅ Successfully set S3 URI (Session ID: ${sessionId})`,
+                    failureMessage: `Failed to set S3 URI (Session ID: ${sessionId})`,
                     continueOnFailure: true
                 }
             );
             
             progressIndex = setS3PrefixResult.newProgressIndex;
             
-            await publishProgress(chatSessionId, "✅ Submitting your PySpark code for execution...", progressIndex++);
+            await publishProgress(chatSessionId, `✅ Submitting your PySpark code for execution... (Session ID: ${sessionId})`, progressIndex++);
             
             // Execute the main code
             const codeResult = await executeCalculation(
@@ -524,8 +632,8 @@ def uploadDfToS3(df, file_path):
                 progressIndex,
                 {
                     timeoutSeconds: Math.ceil(timeout),
-                    waitMessage: "⏳ Executing PySpark code...",
-                    successMessage: "✅ Execution completed! Fetching results..."
+                    waitMessage: `⏳ Executing PySpark code... (Session ID: ${sessionId})`,
+                    successMessage: `✅ Execution completed! Fetching results... (Session ID: ${sessionId})`
                 }
             );
             
@@ -535,10 +643,11 @@ def uploadDfToS3(df, file_path):
             if (codeResult.success) {
                 // Get stdout content
                 if (!codeResult.resultData?.StdOutS3Uri) {
-                    await publishProgress(chatSessionId, "⚠️ Execution completed but no output location found", progressIndex++);
+                    await publishProgress(chatSessionId, `⚠️ Execution completed but no output location found (Session ID: ${sessionId})`, progressIndex++);
                     return JSON.stringify({
                         status: "COMPLETED",
-                        message: "Execution completed but no output location found"
+                        message: "Execution completed but no output location found",
+                        sessionId: sessionId
                     });
                 }
                 
@@ -546,18 +655,19 @@ def uploadDfToS3(df, file_path):
                 const outputs = await fetchCalculationOutputs(codeResult.resultData, chatSessionId, progressIndex);
                 progressIndex += 3; // Account for progress updates in the helper function
                 
-                await publishProgress(chatSessionId, "✅ All results fetched successfully!", progressIndex++);
-                await publishProgress(chatSessionId, "🎉 PySpark execution completed successfully!", progressIndex++);
+                await publishProgress(chatSessionId, `✅ All results fetched successfully! (Session ID: ${sessionId})`, progressIndex++);
+                await publishProgress(chatSessionId, `🎉 PySpark execution completed successfully! (Session ID: ${sessionId})`, progressIndex++);
                 
                 return JSON.stringify({
                     status: "COMPLETED",
                     output: {
                         ...outputs,
-                        message: "PySpark execution completed successfully."
-                    }
+                        message: `PySpark execution completed successfully. (Session ID: ${sessionId})`
+                    },
+                    sessionId: sessionId
                 });
             } else {
-                await publishProgress(chatSessionId, `❌ Execution failed with state: ${codeResult.state}`, progressIndex++);
+                await publishProgress(chatSessionId, `❌ Execution failed with state: ${codeResult.state} (Session ID: ${sessionId})`, progressIndex++);
                 
                 // Use the helper function to fetch outputs even in failure case
                 const outputs = await fetchCalculationOutputs(codeResult.resultData, chatSessionId, progressIndex);
@@ -566,14 +676,16 @@ def uploadDfToS3(df, file_path):
                     status: codeResult.state,
                     error: "PySpark execution did not complete successfully",
                     details: "Check logs for more information",
-                    output: outputs
+                    output: outputs,
+                    sessionId: sessionId
                 });
             }
         } catch (error: any) {
-            await publishProgress(chatSessionId, `❌ Error: ${error.message}`, progressIndex++);
+            await publishProgress(chatSessionId, `❌ Error: ${error.message} (Session ID: ${sessionId || 'Not Created'})`, progressIndex++);
             return JSON.stringify({
                 error: `Error executing PySpark code: ${error.message}`,
-                suggestion: "Check your code syntax and try again"
+                suggestion: "Check your code syntax and try again",
+                sessionId: sessionId || 'Not Created'
             });
         }
     },
@@ -584,13 +696,15 @@ Use this tool to execute PySpark code using AWS Athena. The tool will create an 
 execute the provided PySpark code, and return the execution results.
 
 Important notes:
+- IMPORTANT: Use the uploadDfToS3 function to save your DataFrames to S3 and getDataFrameFromS3 to load your csv files from S3.
+- NEVER use df.write.csv() or df.to_csv() - use uploadDfToS3 instead.
 - The 'spark' session is already initialized in the execution environment
 - You don't need to import SparkSession or create a new session
-- The code has access to common Python and PySpark libraries
+- The STDOUT and STDERR are captured and returned in the response
+- When saving plots, use plotly and export to HTML - use uploadFileToS3 to save the HTML file to S3
 - The execution results will be returned directly in the response
 - S3 URLs for the full output are also provided if needed
 - Real-time progress updates are sent to the user during execution
-- uploadDfToS3 is a helper function that uploads a DataFrame to S3
 
 Example usage:
 - Perform data analysis using PySpark
@@ -614,45 +728,74 @@ df.describe().show()
 
 # Save the DataFrame to S3
 uploadDfToS3(df, 'output/dataframe.csv')
+
+# Read the DataFrame from S3
+df = getDataFrameFromS3('output/dataframe.csv')
+
+# Show the DataFrame
+df.show()
+\`\`\`
+
+Example using a solver:
+\`\`\`python
+from kiwisolver import Solver, Variable
+
+x1 = Variable('x1')
+x2 = Variable('x2')
+xm = Variable('xm')
+
+constraints = [x1 >= 0, x2 <= 100, x2 >= x1 + 10, xm == (x1 + x2) / 2]
+
+solver = Solver()
+
+for cn in constraints:
+    solver.addConstraint(cn)
+
+solver.addConstraint((x1 == 40) | "weak")
+
+solver.addEditVariable(xm, 'strong')
+
+solver.suggestValue(xm, 60)
+
+solver.updateVariables()
+print(xm.value(), x1.value(), x2.value())
+\`\`\`
+
+Example saving a plot to S3:
+\`\`\`python
+import numpy as np
+import plotly.graph_objs as go
+import plotly.io as pio
+
+# Create some sample data
+x = np.linspace(0, 10, 100)
+y = np.sin(x)
+
+# Create a Plotly figure
+fig = go.Figure(data=go.Scatter(x=x, y=y, mode='lines'))
+fig.update_layout(title='Sine Wave', 
+                xaxis_title='X Axis', 
+                yaxis_title='Y Axis')
+
+# Export to HTML
+html_str = pio.to_html(fig, full_html=False)
+
+# Write the HTML to a file
+with open('sine_wave.html', 'w') as f:
+  f.write(html_str)
+
+uploadFileToS3('sine_wave.html', 'output/sine_wave.html')
+print("HTML plot exported successfully!")
 \`\`\`
 
 Available libraries:
-boto3==1.24.31
-botocore==1.27.31
-certifi==2022.6.15
-charset-normalizer==2.1.0
-cycler==0.11.0
-cython==0.29.30
-docutils==0.19
-fonttools==4.34.4
-idna==3.3
-jmespath==1.0.1
-joblib==1.1.0
 kiwisolver==1.4.4
 matplotlib==3.5.2
 mpmath==1.2.1
 numpy==1.23.1
-packaging==21.3
-pandas==1.4.3
-patsy==0.5.2
-pillow==9.2.0
-plotly==5.9.0
-pmdarima==1.8.5
-pyathena==2.9.6
-pyparsing==3.0.9
-python-dateutil==2.8.2
 pytz==2022.1
-requests==2.28.1
-s3transfer==0.6.0
 scikit-learn==1.1.1
 scipy==1.8.1
-seaborn==0.11.2
-six==1.16.0
-statsmodels==0.13.2
-sympy==1.10.1
-tenacity==8.0.1
-threadpoolctl==3.1.0
-urllib3==1.26.10
 pyarrow==9.0.0
 `,
         schema: pysparkToolSchema,
