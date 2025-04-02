@@ -2,30 +2,6 @@ import { tool } from "@langchain/core/tools";
 import { z } from "zod";
 import { readFile } from "./s3ToolBox";
 
-const userInputToolSchema = z.object({
-    title: z.string(),
-    description: z.string(),
-    buttonTextBeforeClick: z.string(),
-    buttonTextAfterClick: z.string(),
-})
-
-export const userInputTool = tool(
-    async (userInputToolArgs) => {
-        return {
-            ...userInputToolArgs,
-        }
-    },
-    {
-        name: "userInputTool",
-        description: `
-Use this tool to send emails or add items to a work management system.
-The messages should never request information.
-They should only inform someone besides the user about an action they should take (including to review an item from the chat).
-`,
-        schema: userInputToolSchema,
-    }
-);
-
 // Schema for plot data tool
 const plotDataToolSchema = z.object({
     filePaths: z.array(z.string()).or(z.string()).describe("Path(s) to the CSV file(s) to plot. Can be a single file path or an array of file paths."),
@@ -51,12 +27,39 @@ const plotDataToolSchema = z.object({
     yAxisLabel: z.string().optional().describe("Optional label for the y-axis"),
 });
 
+// Helper function to validate CSV file extension
+function validateCsvFileExtension(filePath: string): boolean {
+    return filePath.toLowerCase().endsWith('.csv');
+}
+
 export const plotDataTool = tool(
     async (params) => {
         const { filePaths, dataSeries, xAxisColumn, yAxisColumns, plotType = "line", title, xAxisLabel, yAxisLabel, tooltipColumn } = params
         try {
-            // Handle the case where we have dataSeries already defined (multiple files, advanced config)
+            // Check if file paths have .csv extension
+            if (filePaths) {
+                const paths = Array.isArray(filePaths) ? filePaths : [filePaths];
+                for (const path of paths) {
+                    if (!validateCsvFileExtension(path)) {
+                        return JSON.stringify({
+                            error: `Invalid file extension for "${path}". Only CSV files are supported.`,
+                            suggestion: "Please provide file paths ending with .csv"
+                        });
+                    }
+                }
+            }
+            
+            // Check dataSeries file paths if they exist
             if (dataSeries && dataSeries.length > 0) {
+                for (const series of dataSeries) {
+                    if (!validateCsvFileExtension(series.filePath)) {
+                        return JSON.stringify({
+                            error: `Invalid file extension for "${series.filePath}". Only CSV files are supported.`,
+                            suggestion: "Please provide file paths ending with .csv"
+                        });
+                    }
+                }
+                
                 await processMultipleFiles(dataSeries, plotType, title, xAxisLabel, yAxisLabel);
                 return params;
             }
@@ -125,6 +128,7 @@ export const plotDataTool = tool(
         description: `
 Use this tool to create plots from CSV files with support for multiple data series and multiple files.
 The tool will validate file existence and column names before returning the plot configuration.
+Only CSV files (with .csv extension) are supported.
 
 Example usage:
 - Plot temperature vs time from a weather data CSV
@@ -286,36 +290,6 @@ async function processSingleFile(filePath: string, xAxisColumn?: string, yAxisCo
             suggestion: "Check if the CSV file contains valid data"
         });
     }
-
-    // Extract x-axis data array
-    const xAxisData = dataRows.map((p: DataPoint) => p.x);
-
-    // Return the plot configuration with multiple series support
-    return JSON.stringify({
-        messageContentType: 'plot_data',
-        filePath,
-        plotType,
-        title: title || `${normalizedYColumns.map(c => c.column).join(', ')} vs ${finalXAxisColumn}`,
-        xAxis: {
-            label: xAxisLabel || finalXAxisColumn,
-            data: xAxisData
-        },
-        series: normalizedYColumns.map((col, idx) => ({
-            label: col.label || col.column,
-            column: col.column,
-            color: col.color,
-            data: dataRows.map((p: DataPoint) => p.y[idx].value),
-            tooltipData: dataRows.map((p: DataPoint) => p.y[idx].tooltip),
-            sourceFile: filePath,
-            xData: xAxisData, // Add xData for consistency with multi-file case
-            tooltipColumn: col.tooltipColumn || tooltipColumn
-        })),
-        xAxisColumn: finalXAxisColumn,
-        yAxisColumns: normalizedYColumns,
-        dataRows,
-        sourceFiles: [filePath],
-        tooltipColumn
-    });
 }
 
 // Helper function to process multiple files
