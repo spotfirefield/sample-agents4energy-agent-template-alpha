@@ -5,7 +5,7 @@ import { S3Client, PutObjectCommand, ListObjectsV2Command, GetObjectCommand } fr
 import { ChatBedrockConverse } from "@langchain/aws";
 import { getConfiguredAmplifyClient } from '../../../utils/amplifyUtils';
 import { publishResponseStreamChunk } from "../graphql/mutations";
-
+import { getChatSessionId, getChatSessionPrefix } from "./toolUtils";
 
 // Schema for listing files
 const listFilesSchema = z.object({
@@ -78,24 +78,30 @@ function getBucketName() {
     return bucketName;
 }
 
-// Global variable for storing the chat session ID provided by the handler
-let _chatSessionId: string | null = null;
+// // Global variable for storing the chat session ID provided by the handler
+// let _chatSessionId: string | null = null;
 
-// Function to set the chat session ID from the handler
-export function setChatSessionId(chatSessionId: string) {
-    _chatSessionId = chatSessionId;
-}
+// // Function to set the chat session ID from the handler
+// export function setChatSessionId(chatSessionId: string) {
+//     _chatSessionId = chatSessionId;
+// }
+
+
+// export function getChatSessionId() {
+//     return _chatSessionId;
+// }
+
+// function getChatSessionPrefix() {
+//     if (!_chatSessionId) {
+//         throw new Error("Chat session ID not set. Call setChatSessionId first.");
+//     }
+    
+//     return `chatSessionArtifacts/sessionId=${_chatSessionId}/`;
+// }
+
 
 // Global prefix for shared files
 const GLOBAL_PREFIX = 'global/';
-
-function getChatSessionPrefix() {
-    if (!_chatSessionId) {
-        throw new Error("Chat session ID not set. Call setChatSessionId first.");
-    }
-    
-    return `chatSessionArtifacts/sessionId=${_chatSessionId}/`;
-}
 
 // Get the correct S3 prefix based on path
 function getS3KeyPrefix(filepath: string) {
@@ -615,7 +621,7 @@ export const textToTableTool = tool(
                 variables: {
                     chunkText: `Starting text to table conversion for files matching pattern: ${params.filePattern}\n`,
                     index: 0,
-                    chatSessionId: _chatSessionId || ''
+                    chatSessionId: getChatSessionId() || ''
                 }
             });
 
@@ -871,7 +877,7 @@ export const textToTableTool = tool(
                 
                 // Update progress
                 processedCount += batch.length;
-                await publishProgressUpdate(processedCount, matchingFiles.length, _chatSessionId || '', new Date());
+                await publishProgressUpdate(processedCount, matchingFiles.length, getChatSessionId() || '', new Date());
             }
 
             console.log(`Generated ${tableRows.length} table rows`);

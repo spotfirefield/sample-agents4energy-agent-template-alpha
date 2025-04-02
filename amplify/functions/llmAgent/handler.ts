@@ -9,8 +9,11 @@ import { Calculator } from "@langchain/community/tools/calculator";
 
 import { publishResponseStreamChunk } from "../graphql/mutations";
 
-import { setChatSessionId, s3FileManagementTools } from "./s3ToolBox";
-import { userInputTool, plotDataTool } from "./customToolBox";
+import { setChatSessionId } from "../tools/toolUtils";
+import { s3FileManagementTools } from "../tools/s3ToolBox";
+import { userInputTool } from "../tools/userInputTool";
+import { pysparkTool } from "../tools/athenaPySparkTool";
+import { plotDataTool } from "../tools/plotDataTool";
 import { Schema } from '../../data/resource';
 
 import { getLangChainChatMessagesStartingWithHumanMessage, getLangChainMessageTextContent, publishMessage, stringifyLimitStringLength } from '../../../utils/langChainUtils';
@@ -49,14 +52,18 @@ export const handler: Schema["invokeAgent"]["functionHandler"] = async (event, c
             new Calculator(),
             userInputTool,
             plotDataTool,
+            pysparkTool,
             ...s3FileManagementTools
         ]
+
+        
 
         const agent = createReactAgent({
             llm: agentModel,
             tools: agentTools,
         });
 
+        
         let systemMessageContent = `
 You are a helpful llm agent showing a demo workflow. 
 If you don't have the access to the information you need, generate the required information and save it in the data directory.
@@ -67,7 +74,10 @@ Create intermediate files to store your planned actions, thoughts and work. Use 
 Store them in the 'intermediateFiles' directory. After you complete a planned step, record the results in the file.
 
 When creating plots:
-- Try to use existing files for plots if they exist
+- ALWAYS check for and use existing files and data tables before generating new ones
+- If a table has already been generated, reuse that data instead of regenerating it
+- Only generate new data tables if no existing relevant data is available
+- When asked to plot data from a table, look for the specific table mentioned and use that data
 
 When creating reports:
 - Use the writeFile tool to create the first draft of the report file
@@ -80,6 +90,14 @@ When using the file management tools:
 - To read a file, use the readFile tool with the complete path including the filename
 - Global files are shared across sessions and are read-only
 - When saving reports to file, use the writeFile tool with html formatting by default
+
+When using the PySpark tool:
+- Use the pysparkTool to execute big data processing tasks with Apache Spark
+- The Spark session ('spark') is already initialized - don't try to create a new one
+- You can directly create DataFrames, run transformations, and perform analysis
+- The execution output is returned directly in the response - no need to fetch it separately
+- Use this for data processing, ETL jobs, and analytics at scale
+- You can save important results to CSV files using writeFile if needed
 
 When using the textToTableTool:
 - IMPORTANT: For simple file searches, just use the identifying text (e.g., "15_9_19_A") as the pattern
@@ -157,6 +175,18 @@ When you receive a "No files found" error from textToTableTool:
                                 chunkIndex = 0 //reset the stream chunk index
                                 const streamChunk = streamEvent.data.output.messages[0] as ToolMessage | AIMessageChunk
                                 console.log('received tool or agent message:\n', stringifyLimitStringLength(streamChunk))
+                                console.log(streamEvent.name, streamChunk.content, typeof streamChunk.content === 'string')
+                                if (streamEvent.name === 'tools' && typeof streamChunk.content === 'string' && streamChunk.content.toLowerCase().includes("error")) {
+                                    console.log('Generating error message for tool call')
+                                    const toolCallMessage = streamEvent.data.input.messages[streamEvent.data.input.messages.length - 1] as AIMessageChunk
+                                    const toolCallArgs = toolCallMessage.tool_calls?.[0].args
+                                    const toolName = streamChunk.lc_kwargs.name
+                                    const selectedToolSchema = agentTools.find(tool => tool.name === toolName)?.schema
+                                    const zodError = selectedToolSchema?.safeParse(toolCallArgs)
+                                    console.log({toolCallMessage, toolCallArgs, toolName, selectedToolSchema, zodError, formattedZodError: zodError?.error?.format()})
+                                    
+                                    streamChunk.content += '\n\n' + stringify(zodError?.error?.format())
+                                }
 
                                 // Check if this is a table result from textToTableTool and format it properly
                                 if (streamChunk instanceof ToolMessage && streamChunk.name === 'textToTableTool') {
@@ -173,6 +203,23 @@ When you receive a "No files found" error from textToTableTool:
                                         }
                                     } catch (error) {
                                         console.error("Error processing textToTableTool result:", error);
+                                    }
+                                }
+
+                                // Check if this is a PySpark result and format it for better display
+                                if (streamChunk instanceof ToolMessage && streamChunk.name === 'pysparkTool') {
+                                    try {
+                                        const pysparkResult = JSON.parse(streamChunk.content as string);
+                                        if (pysparkResult.status === "COMPLETED" && pysparkResult.output?.content) {
+                                            // Attach PySpark output data for special rendering
+                                            (streamChunk as any).additional_kwargs = {
+                                                pysparkOutput: pysparkResult.output.content,
+                                                pysparkError: pysparkResult.output.stderr,
+                                                messageContentType: 'pyspark_result'
+                                            };
+                                        }
+                                    } catch (error) {
+                                        console.error("Error processing pysparkTool result:", error);
                                     }
                                 }
 
@@ -218,9 +265,9 @@ When you receive a "No files found" error from textToTableTool:
                 //         message: streamChunk
                 //     })
                 //     break
-                default:
-                    console.log('received stream event:\n', stringifyLimitStringLength(streamEvent))
-                    break
+                // default:
+                //     console.log('received stream event:\n', stringifyLimitStringLength(streamEvent))
+                //     break
             }
         }
 

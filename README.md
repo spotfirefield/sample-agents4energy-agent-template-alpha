@@ -1,11 +1,6 @@
-## My Project
+## Deploy
 
-TODO: Fill this README out!
-
-Be sure to:
-
-* Change the title in this README
-* Edit your repository description on GitHub
+To use or-tools within Athena, run the file `scripts/zipOrTools.sh`. This will make the or-tools library available withing PySpark running on Amazon Athena.
 
 ## Security
 
