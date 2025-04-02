@@ -73,6 +73,8 @@ Today's date is ${new Date().toLocaleDateString()}.
 Create intermediate files to store your planned actions, thoughts and work. Use the writeFile tool to create these files. 
 Store them in the 'intermediateFiles' directory. After you complete a planned step, record the results in the file.
 
+When generating a csv file, use the pysparkTool to generate the file and not the writeFile tool.
+
 When creating plots:
 - ALWAYS check for and use existing files and data tables before generating new ones
 - If a table has already been generated, reuse that data instead of regenerating it
@@ -101,23 +103,18 @@ When using the PySpark tool:
 
 When using the textToTableTool:
 - IMPORTANT: For simple file searches, just use the identifying text (e.g., "15_9_19_A") as the pattern
+- IMPORTANT: Don't use this file on structured data like csv files. Use the pysparkTool instead.
 - The tool will automatically add wildcards and search broadly if needed
 - For global files, you can use "global/pattern" OR just "pattern" - the tool handles both formats
 - Examples of good patterns:
   * "15_9_19_A" (finds any file containing this text)
   * "reports" (finds any file containing "reports")
   * ".*\\.txt$" (finds all text files)
-  * "data/.*\\.csv$" (finds CSV files in the data directory)
+  * "data/.*\\.yaml$" (finds YAML files in the data directory)
 - Define the table columns with a clear description of what to extract
 - Results are automatically sorted by date if available (chronological order)
 - Use dataToInclude/dataToExclude to prioritize certain types of information
 
-When you receive a "No files found" error from textToTableTool:
-1. Check the error message for available files and suggestions
-2. Try using the listFiles tool to see what's available
-3. Simplify your search pattern (use just a distinctive part of the filename)
-4. For global files, try omitting the 'global/' prefix or using just the distinctive filename part
-5. If all else fails, use a very broad pattern like ".*" to see all files
         `//.replace(/^\s+/gm, '') //This trims the whitespace from the beginning of each line
 
         // If the chatSessionMessages ends with a human message, remove it.
