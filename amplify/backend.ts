@@ -2,7 +2,7 @@ import { defineBackend } from '@aws-amplify/backend';
 import { auth } from './auth/resource';
 import { data, llmAgentFunction } from './data/resource';
 import { storage } from './storage/resource';
-import {
+import cdk, {
   aws_iam as iam,
   aws_athena as athena,
   aws_s3 as s3
@@ -15,6 +15,10 @@ const backend = defineBackend({
   storage,
   llmAgentFunction
 });
+
+const stackUUID = cdk.Names.uniqueResourceName(
+  backend.stack, {}
+).toLowerCase().replace(/[^a-z0-9-_]/g, '').slice(-3)
 
 // Create a dedicated IAM role for Athena execution
 const athenaExecutionRole = new iam.Role(backend.stack, 'AthenaExecutionRole', {
@@ -44,53 +48,53 @@ athenaExecutionRole.addToPolicy(
   })
 );
 
-// Add Glue catalog permissions
-athenaExecutionRole.addToPolicy(
-  new iam.PolicyStatement({
-    actions: [
-      "glue:CreateDatabase",
-      "glue:GetDatabase",
-      "glue:GetDatabases",
-      "glue:UpdateDatabase",
-      "glue:DeleteDatabase",
-      "glue:CreateTable",
-      "glue:UpdateTable",
-      "glue:GetTable",
-      "glue:GetTables",
-      "glue:DeleteTable",
-      "glue:BatchCreatePartition",
-      "glue:CreatePartition",
-      "glue:UpdatePartition",
-      "glue:GetPartition",
-      "glue:GetPartitions",
-      "glue:BatchGetPartition"
-    ],
-    resources: ["*"],
-  })
-);
+// // Add Glue catalog permissions
+// athenaExecutionRole.addToPolicy(
+//   new iam.PolicyStatement({
+//     actions: [
+//       "glue:CreateDatabase",
+//       "glue:GetDatabase",
+//       "glue:GetDatabases",
+//       "glue:UpdateDatabase",
+//       "glue:DeleteDatabase",
+//       "glue:CreateTable",
+//       "glue:UpdateTable",
+//       "glue:GetTable",
+//       "glue:GetTables",
+//       "glue:DeleteTable",
+//       "glue:BatchCreatePartition",
+//       "glue:CreatePartition",
+//       "glue:UpdatePartition",
+//       "glue:GetPartition",
+//       "glue:GetPartitions",
+//       "glue:BatchGetPartition"
+//     ],
+//     resources: ["*"],
+//   })
+// );
 
-// Add Athena permissions
-athenaExecutionRole.addToPolicy(
-  new iam.PolicyStatement({
-    actions: [
-      "athena:GetWorkGroup",
-      "athena:TerminateSession",
-      "athena:GetSession",
-      "athena:GetSessionStatus",
-      "athena:ListSessions",
-      "athena:StartCalculationExecution",
-      "athena:GetCalculationExecutionCode",
-      "athena:StopCalculationExecution",
-      "athena:ListCalculationExecutions",
-      "athena:GetCalculationExecution",
-      "athena:GetCalculationExecutionStatus",
-      "athena:ListExecutors",
-      "athena:ExportNotebook",
-      "athena:UpdateNotebook"
-    ],
-    resources: ["*"],
-  })
-);
+// // Add Athena permissions
+// athenaExecutionRole.addToPolicy(
+//   new iam.PolicyStatement({
+//     actions: [
+//       "athena:GetWorkGroup",
+//       "athena:TerminateSession",
+//       "athena:GetSession",
+//       "athena:GetSessionStatus",
+//       "athena:ListSessions",
+//       "athena:StartCalculationExecution",
+//       "athena:GetCalculationExecutionCode",
+//       "athena:StopCalculationExecution",
+//       "athena:ListCalculationExecutions",
+//       "athena:GetCalculationExecution",
+//       "athena:GetCalculationExecutionStatus",
+//       "athena:ListExecutors",
+//       "athena:ExportNotebook",
+//       "athena:UpdateNotebook"
+//     ],
+//     resources: ["*"],
+//   })
+// );
 
 // Add CloudWatch permissions for logging
 athenaExecutionRole.addToPolicy(
@@ -106,7 +110,7 @@ athenaExecutionRole.addToPolicy(
 
 // Create Athena workgroup for PySpark execution with a new name to avoid update issues
 const athenaWorkgroup = new athena.CfnWorkGroup(backend.stack, 'SparkWorkgroup', {
-  name: 'pyspark-workgroup',
+  name: `pyspark-workgroup-${stackUUID}`,
   workGroupConfiguration: {
     resultConfiguration: {
       outputLocation: `s3://${backend.storage.resources.bucket.bucketName}/athena-results/`,
@@ -172,7 +176,11 @@ backend.llmAgentFunction.resources.lambda.addToRolePolicy(
 
 backend.llmAgentFunction.resources.lambda.addToRolePolicy(
   new iam.PolicyStatement({
-    actions: ["s3:*"],
+    actions: [
+      "s3:ListBucket",
+      "s3:GetObject",
+      "s3:PutObject"
+    ],
     resources: [
       backend.storage.resources.bucket.bucketArn,
       `${backend.storage.resources.bucket.bucketArn}/*`,
@@ -187,5 +195,5 @@ backend.llmAgentFunction.addEnvironment(
 
 backend.llmAgentFunction.addEnvironment(
   'ATHENA_WORKGROUP_NAME',
-  'pyspark-workgroup'
+  athenaWorkgroup.name
 );
