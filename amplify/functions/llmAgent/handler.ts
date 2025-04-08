@@ -13,7 +13,8 @@ import { setChatSessionId } from "../tools/toolUtils";
 import { s3FileManagementTools } from "../tools/s3ToolBox";
 import { userInputTool } from "../tools/userInputTool";
 import { pysparkTool } from "../tools/athenaPySparkTool";
-import { plotDataTool } from "../tools/plotDataTool";
+// import { plotDataTool } from "../tools/plotDataTool";
+import { renderAssetTool } from "../tools/renderAssetTool";
 import { Schema } from '../../data/resource';
 
 import { getLangChainChatMessagesStartingWithHumanMessage, getLangChainMessageTextContent, publishMessage, stringifyLimitStringLength } from '../../../utils/langChainUtils';
@@ -51,12 +52,11 @@ export const handler: Schema["invokeAgent"]["functionHandler"] = async (event, c
         const agentTools = [
             new Calculator(),
             userInputTool,
-            plotDataTool,
+            // plotDataTool,
             pysparkTool,
-            ...s3FileManagementTools
+            ...s3FileManagementTools,
+            renderAssetTool
         ]
-
-        
 
         const agent = createReactAgent({
             llm: agentModel,
