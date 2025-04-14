@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
-import { 
-  Drawer, 
-  Box, 
-  Typography, 
-  IconButton, 
+import {
+  Drawer,
+  Box,
+  Typography,
+  IconButton,
   Divider,
   useTheme,
   useMediaQuery,
@@ -16,7 +16,8 @@ import {
   Dialog,
   DialogTitle,
   DialogContent,
-  DialogActions
+  DialogActions,
+  TextField
 } from '@mui/material';
 import { uploadData, remove } from '@aws-amplify/storage';
 import FolderIcon from '@mui/icons-material/Folder';
@@ -24,6 +25,7 @@ import CloseIcon from '@mui/icons-material/Close';
 import UploadFileIcon from '@mui/icons-material/UploadFile';
 import InsertDriveFileIcon from '@mui/icons-material/InsertDriveFile';
 import DeleteIcon from '@mui/icons-material/Delete';
+import CreateNewFolderIcon from '@mui/icons-material/CreateNewFolder';
 
 import FileExplorer from './FileExplorer';
 import FileViewer from './FileViewer';
@@ -45,14 +47,14 @@ interface FileDrawerProps {
   variant?: 'temporary' | 'persistent' | 'permanent';
 }
 
-const FileDrawer: React.FC<FileDrawerProps> = ({ 
-  open, 
-  onClose, 
+const FileDrawer: React.FC<FileDrawerProps> = ({
+  open,
+  onClose,
   chatSessionId
 }) => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
-  
+
   // File extensions to icon mapping
   const fileIcons: Record<string, React.ReactNode> = {
     '.txt': <InsertDriveFileIcon style={{ color: '#2196f3' }} />,
@@ -74,27 +76,38 @@ const FileDrawer: React.FC<FileDrawerProps> = ({
     const extension = fileName.substring(fileName.lastIndexOf('.')).toLowerCase();
     return fileIcons[extension] || <InsertDriveFileIcon />;
   };
-  
+
   // State for the currently selected file to preview
   const [selectedFile, setSelectedFile] = useState<FileItem | null>(null);
-  
+
   // Upload state
   const [isUploading, setIsUploading] = useState(false);
   const [uploadMessage, setUploadMessage] = useState('');
   const [showUploadMessage, setShowUploadMessage] = useState(false);
-  
+  const [currentPath, setCurrentPath] = useState('');
+
   // Use the file system context to trigger refreshes
   const { refreshFiles } = useFileSystem();
-  
+
   // Delete state
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [fileToDelete, setFileToDelete] = useState<FileItem | null>(null);
-  
+
+  // New folder creation state
+  const [createFolderDialogOpen, setCreateFolderDialogOpen] = useState(false);
+  const [newFolderName, setNewFolderName] = useState('');
+  const [isCreatingFolder, setIsCreatingFolder] = useState(false);
+
   // Handle file selection for preview
   const handleFileSelect = (file: FileItem) => {
     if (!file.isFolder) {
       setSelectedFile(file);
     }
+  };
+
+  // Add function to update current path
+  const handlePathChange = (path: string) => {
+    setCurrentPath(path);
   };
 
   const handleDeleteClick = (file: FileItem) => {
@@ -131,8 +144,14 @@ const FileDrawer: React.FC<FileDrawerProps> = ({
 
     try {
       const uploadPromises = Array.from(files).map(async (file) => {
-        const key = `chatSessionArtifacts/sessionId=${chatSessionId}/${file.name}`;
-        
+        // Include the current path in the upload key, if the current path does not begin with global
+
+        const s3_path = currentPath ? `${currentPath}${file.name}`: file.name;
+
+        const key = !s3_path.startsWith('global') ?
+          `chatSessionArtifacts/sessionId=${chatSessionId}/${s3_path}` :
+          s3_path;
+
         await uploadData({
           path: key,
           data: file,
@@ -144,7 +163,7 @@ const FileDrawer: React.FC<FileDrawerProps> = ({
 
       await Promise.all(uploadPromises);
       setUploadMessage('Files uploaded successfully');
-      
+
       // Add a small delay before refreshing to allow S3 to propagate changes
       setTimeout(() => {
         refreshFiles();
@@ -163,9 +182,45 @@ const FileDrawer: React.FC<FileDrawerProps> = ({
   const handleCloseUploadMessage = () => {
     setShowUploadMessage(false);
   };
-  
+
   // Adjust drawer width for non-mobile screens to allow chat visibility
   const drawerWidth = isMobile ? '100%' : '45%';
+
+  // Handle folder creation
+  const handleCreateFolder = async () => {
+    if (!newFolderName.trim()) return;
+
+    setIsCreatingFolder(true);
+    setUploadMessage('Creating folder...');
+    setShowUploadMessage(true);
+
+    try {
+      const key = `chatSessionArtifacts/sessionId=${chatSessionId}/${newFolderName.trim()}/`;
+
+      // Create an empty object with key ending in '/' to represent a folder
+      await uploadData({
+        path: key,
+        data: new Blob([]),
+        options: {
+          contentType: 'application/x-directory'
+        }
+      });
+
+      setUploadMessage('Folder created successfully');
+      setCreateFolderDialogOpen(false);
+      setNewFolderName('');
+
+      // Add a small delay before refreshing to allow S3 to propagate changes
+      setTimeout(() => {
+        refreshFiles();
+      }, 1000);
+    } catch (error) {
+      console.error('Error creating folder:', error);
+      setUploadMessage('Failed to create folder. Please try again.');
+    } finally {
+      setIsCreatingFolder(false);
+    }
+  };
 
   return (
     <>
@@ -222,7 +277,7 @@ const FileDrawer: React.FC<FileDrawerProps> = ({
                   variant="contained"
                   color="primary"
                   disabled={isUploading}
-                  sx={{ 
+                  sx={{
                     backgroundColor: theme.palette.primary.main,
                     color: theme.palette.primary.contrastText,
                     '&:hover': {
@@ -239,9 +294,23 @@ const FileDrawer: React.FC<FileDrawerProps> = ({
                   Upload
                 </Button>
               </label>
+              <Button
+                startIcon={<CreateNewFolderIcon />}
+                variant="outlined"
+                color="primary"
+                onClick={() => setCreateFolderDialogOpen(true)}
+                disabled={isCreatingFolder}
+                sx={{
+                  borderRadius: '6px',
+                  textTransform: 'none',
+                  boxShadow: 'none',
+                }}
+              >
+                New Folder
+              </Button>
               <IconButton
                 onClick={onClose}
-                sx={{ 
+                sx={{
                   color: theme.palette.text.secondary,
                   '&:hover': {
                     backgroundColor: 'rgba(0,0,0,0.04)',
@@ -253,33 +322,34 @@ const FileDrawer: React.FC<FileDrawerProps> = ({
               </IconButton>
             </Box>
           </Box>
-          
+
           <Divider />
-          
-          <Box sx={{ 
+
+          <Box sx={{
             height: 'calc(100% - 64px)', // Subtract header height
             overflow: 'hidden',
             backgroundColor: theme.palette.background.default,
           }}>
             {/* Split view for larger devices using Stack instead of Grid2 */}
-            <Stack 
-              direction="row" 
+            <Stack
+              direction="row"
               sx={{ height: '100%' }}
               divider={<Divider orientation="vertical" flexItem />}
             >
               <Box sx={{ width: '40%', height: '100%', overflow: 'auto', p: 2, backgroundColor: theme.palette.background.default }}>
-                <FileExplorer 
-                  chatSessionId={chatSessionId} 
+                <FileExplorer
+                  chatSessionId={chatSessionId}
                   onFileSelect={handleFileSelect}
+                  onPathChange={handlePathChange}
                 />
               </Box>
               <Box sx={{ width: '60%', height: '100%', overflow: 'auto', p: 2, backgroundColor: theme.palette.background.paper }}>
                 {selectedFile ? (
                   <>
-                    <Box sx={{ 
-                      display: 'flex', 
-                      justifyContent: 'space-between', 
-                      alignItems: 'flex-start', 
+                    <Box sx={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'flex-start',
                       mb: 2,
                       p: 2,
                       borderRadius: '8px',
@@ -294,7 +364,7 @@ const FileDrawer: React.FC<FileDrawerProps> = ({
                       <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1, flex: 1, minWidth: 0 }}>
                         <InsertDriveFileIcon sx={{ color: theme.palette.primary.main, mt: 0.5 }} />
                         <Box sx={{ minWidth: 0, flex: 1 }}>
-                          <Typography variant="subtitle1" sx={{ 
+                          <Typography variant="subtitle1" sx={{
                             fontWeight: 500,
                             color: theme.palette.text.primary,
                             overflow: 'hidden',
@@ -303,7 +373,7 @@ const FileDrawer: React.FC<FileDrawerProps> = ({
                           }}>
                             {selectedFile.name}
                           </Typography>
-                          <Typography variant="caption" sx={{ 
+                          <Typography variant="caption" sx={{
                             color: theme.palette.text.secondary,
                             display: 'block',
                             overflow: 'hidden',
@@ -335,12 +405,12 @@ const FileDrawer: React.FC<FileDrawerProps> = ({
                     />
                   </>
                 ) : (
-                  <Paper 
-                    elevation={0} 
-                    sx={{ 
-                      height: '100%', 
-                      display: 'flex', 
-                      alignItems: 'center', 
+                  <Paper
+                    elevation={0}
+                    sx={{
+                      height: '100%',
+                      display: 'flex',
+                      alignItems: 'center',
                       justifyContent: 'center',
                       bgcolor: theme.palette.background.paper,
                       p: 3,
@@ -359,16 +429,16 @@ const FileDrawer: React.FC<FileDrawerProps> = ({
           </Box>
 
           {/* Upload status message */}
-          <Snackbar 
-            open={showUploadMessage} 
+          <Snackbar
+            open={showUploadMessage}
             autoHideDuration={isUploading ? null : 4000}
             onClose={handleCloseUploadMessage}
             anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
           >
-            <Alert 
-              onClose={handleCloseUploadMessage} 
-              severity={isUploading ? "info" : "success"} 
-              sx={{ 
+            <Alert
+              onClose={handleCloseUploadMessage}
+              severity={isUploading ? "info" : "success"}
+              sx={{
                 width: '100%',
                 boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
                 borderRadius: '8px',
@@ -435,7 +505,7 @@ const FileDrawer: React.FC<FileDrawerProps> = ({
                   variant="contained"
                   color="primary"
                   disabled={isUploading}
-                  sx={{ 
+                  sx={{
                     backgroundColor: theme.palette.primary.main,
                     color: theme.palette.primary.contrastText,
                     '&:hover': {
@@ -452,9 +522,23 @@ const FileDrawer: React.FC<FileDrawerProps> = ({
                   Upload
                 </Button>
               </label>
+              <Button
+                startIcon={<CreateNewFolderIcon />}
+                variant="outlined"
+                color="primary"
+                onClick={() => setCreateFolderDialogOpen(true)}
+                disabled={isCreatingFolder}
+                sx={{
+                  borderRadius: '6px',
+                  textTransform: 'none',
+                  boxShadow: 'none',
+                }}
+              >
+                New Folder
+              </Button>
               <IconButton
                 onClick={onClose}
-                sx={{ 
+                sx={{
                   color: theme.palette.text.secondary,
                   '&:hover': {
                     backgroundColor: 'rgba(0,0,0,0.04)',
@@ -466,10 +550,10 @@ const FileDrawer: React.FC<FileDrawerProps> = ({
               </IconButton>
             </Box>
           </Box>
-          
+
           <Divider />
-          
-          <Box sx={{ 
+
+          <Box sx={{
             height: 'calc(100% - 64px)', // Subtract header height
             overflow: 'hidden',
             backgroundColor: theme.palette.background.default,
@@ -480,11 +564,11 @@ const FileDrawer: React.FC<FileDrawerProps> = ({
                 // Show file preview with back button on small screens
                 <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
                   <Box sx={{ p: 1.5, borderBottom: '1px solid rgba(0,0,0,0.08)' }}>
-                    <Button 
-                      onClick={() => setSelectedFile(null)} 
-                      startIcon={<FolderIcon />} 
+                    <Button
+                      onClick={() => setSelectedFile(null)}
+                      startIcon={<FolderIcon />}
                       variant="text"
-                      sx={{ 
+                      sx={{
                         textTransform: 'none',
                         color: theme.palette.primary.main,
                       }}
@@ -503,9 +587,10 @@ const FileDrawer: React.FC<FileDrawerProps> = ({
               ) : (
                 // Show file explorer
                 <Box sx={{ height: '100%', overflow: 'auto', p: 2, backgroundColor: theme.palette.background.default }}>
-                  <FileExplorer 
-                    chatSessionId={chatSessionId} 
+                  <FileExplorer
+                    chatSessionId={chatSessionId}
                     onFileSelect={handleFileSelect}
+                    onPathChange={handlePathChange}
                   />
                 </Box>
               )}
@@ -513,16 +598,16 @@ const FileDrawer: React.FC<FileDrawerProps> = ({
           </Box>
 
           {/* Upload status message */}
-          <Snackbar 
-            open={showUploadMessage} 
+          <Snackbar
+            open={showUploadMessage}
             autoHideDuration={isUploading ? null : 4000}
             onClose={handleCloseUploadMessage}
             anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
           >
-            <Alert 
-              onClose={handleCloseUploadMessage} 
-              severity={isUploading ? "info" : "success"} 
-              sx={{ 
+            <Alert
+              onClose={handleCloseUploadMessage}
+              severity={isUploading ? "info" : "success"}
+              sx={{
                 width: '100%',
                 boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
                 borderRadius: '8px',
@@ -536,13 +621,20 @@ const FileDrawer: React.FC<FileDrawerProps> = ({
       )}
 
       {/* Delete confirmation dialog */}
-      <Dialog 
-        open={deleteDialogOpen} 
+      <Dialog
+        open={deleteDialogOpen}
         onClose={() => setDeleteDialogOpen(false)}
-        PaperProps={{
-          sx: {
-            borderRadius: '8px',
-            boxShadow: '0 8px 24px rgba(0,0,0,0.15)',
+        slotProps={{
+          paper: {
+            sx: {
+              borderRadius: '8px',
+              boxShadow: '0 8px 24px rgba(0,0,0,0.15)',
+            }
+          }
+        }}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            handleDeleteConfirm();
           }
         }}
       >
@@ -553,27 +645,88 @@ const FileDrawer: React.FC<FileDrawerProps> = ({
           </Typography>
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2 }}>
-          <Button 
+          <Button
             onClick={() => setDeleteDialogOpen(false)}
             variant="outlined"
-            sx={{ 
+            sx={{
               textTransform: 'none',
               borderRadius: '6px',
             }}
           >
             Cancel
           </Button>
-          <Button 
-            onClick={handleDeleteConfirm} 
-            color="error" 
+          <Button
+            onClick={handleDeleteConfirm}
+            color="error"
             variant="contained"
-            sx={{ 
+            sx={{
               textTransform: 'none',
               borderRadius: '6px',
               boxShadow: 'none',
             }}
           >
             Delete
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Create folder dialog */}
+      <Dialog
+        open={createFolderDialogOpen}
+        onClose={() => !isCreatingFolder && setCreateFolderDialogOpen(false)}
+        PaperProps={{
+          sx: {
+            borderRadius: '8px',
+            boxShadow: '0 8px 24px rgba(0,0,0,0.15)',
+          }
+        }}
+      >
+        <DialogTitle sx={{ borderBottom: '1px solid rgba(0,0,0,0.08)' }}>Create New Folder</DialogTitle>
+        <DialogContent sx={{ py: 2, mt: 1 }}>
+          <TextField
+            autoFocus
+            margin="dense"
+            label="Folder Name"
+            type="text"
+            fullWidth
+            value={newFolderName}
+            onChange={(e) => setNewFolderName(e.target.value)}
+            disabled={isCreatingFolder}
+            onKeyPress={(e) => {
+              if (e.key === 'Enter' && newFolderName.trim()) {
+                handleCreateFolder();
+              }
+            }}
+          />
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button
+            onClick={() => setCreateFolderDialogOpen(false)}
+            variant="outlined"
+            disabled={isCreatingFolder}
+            sx={{
+              textTransform: 'none',
+              borderRadius: '6px',
+            }}
+          >
+            Cancel
+          </Button>
+          <Button
+            onClick={handleCreateFolder}
+            color="primary"
+            variant="contained"
+            disabled={!newFolderName.trim() || isCreatingFolder}
+            sx={{
+              textTransform: 'none',
+              borderRadius: '6px',
+              boxShadow: 'none',
+            }}
+          >
+            {isCreatingFolder ? (
+              <CircularProgress size={24} color="inherit" />
+            ) : (
+              'Create'
+            )}
           </Button>
         </DialogActions>
       </Dialog>

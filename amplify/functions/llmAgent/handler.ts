@@ -10,7 +10,7 @@ import { DuckDuckGoSearch } from "@langchain/community/tools/duckduckgo_search";
 
 import { publishResponseStreamChunk } from "../graphql/mutations";
 
-import { setChatSessionId } from "../tools/toolUtils";
+import { setChatSessionId, setOrigin } from "../tools/toolUtils";
 import { s3FileManagementTools } from "../tools/s3ToolBox";
 import { userInputTool } from "../tools/userInputTool";
 import { pysparkTool } from "../tools/athenaPySparkTool";
@@ -22,10 +22,18 @@ import { getLangChainChatMessagesStartingWithHumanMessage, getLangChainMessageTe
 import { EventEmitter } from "events";
 
 // Increase the default max listeners to prevent warnings
-EventEmitter.defaultMaxListeners = 20;
+EventEmitter.defaultMaxListeners = 10;
+
+// Add cleanup helper
+const cleanupEventEmitter = (emitter: EventEmitter) => {
+    emitter.removeAllListeners();
+};
 
 export const handler: Schema["invokeAgent"]["functionHandler"] = async (event, context) => {
     console.log('event:\n', JSON.stringify(event, null, 2))
+
+    // Track resources that need cleanup
+    const resources: { cleanup: () => void }[] = [];
 
     try {
         if (event.arguments.chatSessionId === null) throw new Error("chatSessionId is required");
@@ -35,11 +43,17 @@ export const handler: Schema["invokeAgent"]["functionHandler"] = async (event, c
         // Set the chat session ID for use by the S3 tools
         setChatSessionId(event.arguments.chatSessionId);
 
+        // Set the origin from the request headers
+        if (event.request?.headers?.origin) {
+            setOrigin(event.request.headers.origin);
+        }
+
         // Define the S3 prefix for this chat session (needed for env vars)
         const bucketName = process.env.STORAGE_BUCKET_NAME;
         if (!bucketName) throw new Error("STORAGE_BUCKET_NAME is not set");
 
         const amplifyClient = getConfiguredAmplifyClient();
+        resources.push({ cleanup: () => { /* Amplify client cleanup if needed */ } });
 
         // This function includes validation to prevent "The text field in the ContentBlock object is blank" errors
         // by ensuring no message content is empty when sent to Bedrock
@@ -49,13 +63,27 @@ export const handler: Schema["invokeAgent"]["functionHandler"] = async (event, c
             model: process.env.AGENT_MODEL_ID,
             // temperature: 0
         });
+        resources.push({ cleanup: () => { 
+            // Close any open connections
+            if ((agentModel as any)._client) {
+                (agentModel as any)._client.destroy();
+            }
+        }});
 
         const agentTools = [
             new Calculator(),
             new DuckDuckGoSearch({maxResults: 3}),
             userInputTool,
+<<<<<<< HEAD
+            pysparkTool({
+                additionalToolDescription: `
+                When fitting a hyperbolic decline curve to well production data:
+                - You MUST weight the most recent points more x20 more heavily when fitting the curve.
+            `}),
+=======
             // plotDataTool,
             pysparkTool,
+>>>>>>> main
             webBrowserTool,
             ...s3FileManagementTools,
             renderAssetTool
@@ -73,6 +101,7 @@ If you don't have the access to the information you need, generate the required 
 Use markdown formatting for your responses (like **bold**, *italic*, ## headings, etc.), but DO NOT wrap your response in markdown code blocks.
 Today's date is ${new Date().toLocaleDateString()}.
 
+List the files in the global/notes directory for guidance on how to respond to the user.
 Create intermediate files to store your planned actions, thoughts and work. Use the writeFile tool to create these files. 
 Store them in the 'intermediateFiles' directory. After you complete a planned step, record the results in the file.
 
@@ -85,26 +114,37 @@ When creating plots:
 - When asked to plot data from a table, look for the specific table mentioned and use that data
 
 When creating reports:
+<<<<<<< HEAD
+- Start the report with a summary which includes:
+    - The recommended action.
+    - Financial metrics describing any recommended actions.
+- Include sections descirbing any analysis performed, and a list of the source documents or data tables used in the analysis.
+- Use iframes to display plots and other files in the report.
+=======
 - Start the report with a summary which includes the recommend action. Then have sections which justify the action.
 - Include source information for all included data.
+>>>>>>> main
 - Use the writeFile tool to create the first draft of the report file
-- Use html formatting for the report by default
+- Use html formatting for the report
 - Put reports in the 'reports' directory
+- IMPORTANT: When referencing files in HTML (links or iframes):
+  * Always use paths relative to the workspace root (no ../ needed)
+  * For plots: use "plots/filename.html"
+  * For reports: use "reports/filename.html"
+  * For data files: use "data/filename.csv"
+  * Example iframe: <iframe src="plots/well_production_plot.html" width="100%" height="500px" frameborder="0"></iframe>
+  * Example link: <a href="data/production_data.csv">Download Data</a>
 
 When using the file management tools:
 - The listFiles tool returns separate 'directories' and 'files' fields to clearly distinguish between them
 - To access a directory, include the trailing slash in the path or use the directory name
 - To read a file, use the readFile tool with the complete path including the filename
 - Global files are shared across sessions and are read-only
-- When saving reports to file, use the writeFile tool with html formatting by default
+- When saving reports to file, use the writeFile tool with html formatting
 
 When using the PySpark tool:
-- Use the pysparkTool to execute big data processing tasks with Apache Spark
-- The Spark session ('spark') is already initialized - don't try to create a new one
-- You can directly create DataFrames, run transformations, and perform analysis
-- The execution output is returned directly in the response - no need to fetch it separately
-- Use this for data processing, ETL jobs, and analytics at scale
-- You can save important results to CSV files using writeFile if needed
+- After fitting a curve, ALWAYS check the residuals to ensure the fit is good. 
+- If the residuals are not normally distributed, try a different model or transformation.
 
 When using the textToTableTool:
 - IMPORTANT: For simple file searches, just use the identifying text (e.g., "15_9_19_A") as the pattern
@@ -119,6 +159,7 @@ When using the textToTableTool:
 - Define the table columns with a clear description of what to extract
 - Results are automatically sorted by date if available (chronological order)
 - Use dataToInclude/dataToExclude to prioritize certain types of information
+- When reading well reports, always include a column for a description of the well event
 
         `//.replace(/^\s+/gm, '') //This trims the whitespace from the beginning of each line
 
@@ -146,6 +187,7 @@ When using the textToTableTool:
             input,
             {
                 version: "v2",
+                recursionLimit: 100 
             }
         );
 
@@ -236,49 +278,25 @@ When using the textToTableTool:
                         }
                     }
                     break;
-                // case "on_tool_end":
-                // case "on_tool_error":
-                // case "on_chat_model_end":
-                //     chunkIndex = 0 //reset the stream chunk index
-                //     const streamChunk = streamEvent.data.output as ToolMessage | AIMessageChunk
-                //     console.log('received on chat model end:\n', stringifyLimitStringLength(streamChunk))
-
-                //     // Check if this is a table result from textToTableTool and format it properly
-                //     if (streamChunk instanceof ToolMessage && streamChunk.name === 'textToTableTool') {
-                //         try {
-                //             const toolResult = JSON.parse(streamChunk.content as string);
-                //             if (toolResult.messageContentType === 'tool_table') {
-                //                 // Attach table data to the message using additional_kwargs which is supported by LangChain
-                //                 (streamChunk as any).additional_kwargs = {
-                //                     tableData: toolResult.data,
-                //                     tableColumns: toolResult.columns,
-                //                     matchedFileCount: toolResult.matchedFileCount,
-                //                     messageContentType: 'tool_table'
-                //                 };
-                //             }
-                //         } catch (error) {
-                //             console.error("Error processing textToTableTool result:", error);
-                //         }
-                //     }
-
-                //     await publishMessage({
-                //         chatSessionId: event.arguments.chatSessionId,
-                //         owner: event.identity.sub,
-                //         message: streamChunk
-                //     })
-                //     break
-                // default:
-                //     console.log('received stream event:\n', stringifyLimitStringLength(streamEvent))
-                //     break
             }
         }
 
     } catch (error) {
         console.error("Error responding to user:", JSON.stringify(error, null, 2));
-        if (error instanceof Error) {
-            throw new Error(`Error responding to user:\n${error.message}`);
-        } else {
-            throw new Error("Error responding to user: \nUnknown error");
+        throw error;
+    } finally {
+        // Clean up all resources
+        for (const resource of resources) {
+            try {
+                resource.cleanup();
+            } catch (cleanupError) {
+                console.error("Error during cleanup:", cleanupError);
+            }
+        }
+        
+        // Clean up any remaining event listeners
+        if (process.eventNames().length > 0) {
+            process.removeAllListeners();
         }
     }
 }

@@ -6,17 +6,17 @@ import { v4 as uuidv4 } from 'uuid';
 import { getConfiguredAmplifyClient } from '../../../utils/amplifyUtils';
 import { publishResponseStreamChunk } from "../graphql/mutations";
 import { getChatSessionId, getChatSessionPrefix } from "./toolUtils";
+import { writeFile } from "./s3ToolBox";
+
 // Environment variables
 const ATHENA_WORKGROUP = process.env.ATHENA_WORKGROUP_NAME || 'pyspark-workgroup';
 const AWS_REGION = process.env.AWS_REGION || 'us-east-1';
 
-export const getSessionSetupScript = () => `
+export const getSessionSetupScript = () => { 
+    return `
 import os
 
 # Create the output directory and subdirectories if they don't exist
-# os.makedirs('output', exist_ok=True)
-# os.makedirs('output/data', exist_ok=True)
-# os.makedirs('output/plots', exist_ok=True)
 os.makedirs('plots', exist_ok=True)
 os.makedirs('data', exist_ok=True)
 
@@ -80,6 +80,46 @@ def getDataFrameFromS3(file_path):
     
     return df
 
+def downloadFileFromS3(s3_path):
+    """
+    Download a file from S3 to the local directory.
+    
+    Args:
+        s3_path (str): Path to the file in S3, relative to the chat session directory
+                       If path starts with 'global/', it will be accessed from the global directory
+        
+    Note:
+        - The file will be downloaded to the same relative path in the local directory
+        - Parent directories will be created if they don't exist
+    """
+    import boto3
+    import os
+    
+    # Remove any leading slash to ensure we work with relative paths
+    local_path = s3_path.lstrip('/')
+    
+    # Ensure the directory exists (using the relative path)
+    dir_path = os.path.dirname(local_path)
+    if dir_path:
+        os.makedirs(dir_path, exist_ok=True)
+    
+    # Download the file
+    try:
+        print(f"Downloading {s3_path} from S3...")
+        s3_client = boto3.client('s3')
+        
+        # If path starts with 'global/', don't add the chat session prefix
+        s3_key = s3_path if s3_path.startswith('global/') else chatSessionS3Prefix + s3_path
+        
+        s3_client.download_file(
+            '${process.env.STORAGE_BUCKET_NAME}', 
+            s3_key,
+            local_path
+        )
+        print(f"Successfully downloaded {local_path}")
+    except Exception as e:
+        print(f"Error downloading {s3_path}: {str(e)}")
+
 def uploadFileToS3(file_path, s3_path):
     """
     Upload a file to S3.
@@ -122,14 +162,47 @@ def uploadFileToS3(file_path, s3_path):
         ExtraArgs=extra_args
     )
 `
+}
 
-const getPostCodeExecutionScript = () => `
+export const getPreCodeExecutionScript = (script: string) => { 
+    // Download any files which the code tries to import using pd.read_csv('...') or open('...')
+    // Extract file paths from pd.read_csv calls, handling cases with additional parameters
+    const csvMatches = script?.match(/pd\.read_csv\(['"]([^'"]+)['"](?:\s*,\s*[^)]+)?\)/g) || [];
+    const csvFiles = csvMatches.map(match => {
+        // Extract just the file path from the full pd.read_csv call
+        const pathMatch = match.match(/pd\.read_csv\(['"]([^'"]+)['"]/);
+        return pathMatch ? pathMatch[1] : null;
+    }).filter(Boolean);
+
+    // Extract file paths from open() calls
+    const openMatches = script?.match(/open\(['"]([^'"]+)['"]/g) || [];
+    const openFiles = openMatches.map(match => {
+        // Extract just the file path from the open call
+        const pathMatch = match.match(/open\(['"]([^'"]+)['"]/);
+        return pathMatch ? pathMatch[1] : null;
+    }).filter(Boolean);
+
+    // Combine both sets of files
+    const filesToDownload = [...new Set([...csvFiles, ...openFiles])];
+
+    console.log(`Files to download: ${JSON.stringify(filesToDownload)}`);
+    return `
+files_to_download = ${JSON.stringify(filesToDownload)}
+
+# Download any files that are referenced in pd.read_csv or open() calls
+for s3_path in files_to_download:
+    downloadFileFromS3(s3_path)
+\n\n`
+}
+
+export const getPostCodeExecutionScript = () => { return `
 import os
 
 def upload_working_directory():
     """
     Recursively walk through the current working directory and upload all files to S3.
     Files will be uploaded preserving their directory structure.
+    Note: Files in the 'global' directory are skipped as they are read-only resources.
     """
     cwd = os.getcwd()
     
@@ -150,6 +223,10 @@ def upload_working_directory():
             # Skip any __pycache__ directories
             if '__pycache__' in rel_path.split(os.sep):
                 continue
+                
+            # Skip files in the global directory
+            if rel_path.startswith('global'):
+                continue
             
             # Upload the file to S3 preserving the directory structure
             print(f"Uploading {local_path} to S3...")
@@ -160,7 +237,7 @@ def upload_working_directory():
 # Execute the upload
 upload_working_directory()
 `
-
+}
 // Helper function to read a file from S3
 async function readS3File(s3Uri: string): Promise<string> {
     try {
@@ -503,14 +580,16 @@ async function isSessionActive(athenaClient: AthenaClient, sessionId: string): P
 
 // Schema for the PySpark execution tool
 const pysparkToolSchema = z.object({
-    code: z.string().describe("PySpark code to execute. The 'spark' session is already initialized."),
+    code: z.string().optional().describe("PySpark code to execute. If provided, this code will be saved to scriptPath before execution. The 'spark' session is already initialized."),
     timeout: z.number().optional().default(300).describe("Timeout in seconds for the execution"),
-    description: z.string().optional().describe("Optional description for the execution")
+    description: z.string().optional().describe("Optional description for the execution"),
+    scriptPath: z.string().describe("Path for the script file. If code is provided, the script will be saved here. If code is not provided, an existing script at this path will be executed. Must start with 'scripts/'")
 });
 
-export const pysparkTool = tool(
+export const pysparkTool = (props: {additionalSetupScript?: string, additionalToolDescription?: string}) => tool(
     async (params) => {
-        const { code, timeout = 300, description = "PySpark execution" } = params;
+        const { code, scriptPath, timeout = 300, description = "PySpark execution" } = params;
+        const { additionalSetupScript = '' } = props;
         let progressIndex = 0;
         const chatSessionId = getChatSessionId();
         let sessionId: string | null = null;
@@ -518,6 +597,23 @@ export const pysparkTool = tool(
             throw new Error("Chat session ID not found");
         }
         try {
+            let codeToExecute = ''
+            // Save the script file
+            if (code && scriptPath) {
+                // Save the code to a file
+                codeToExecute = getPreCodeExecutionScript(code) + code + getPostCodeExecutionScript();
+                await writeFile.invoke({
+                    filename: scriptPath,
+                    content: getSessionSetupScript() + additionalSetupScript + '\n' + codeToExecute
+                });
+                console.log(`Saved code to file: ${scriptPath}`);
+            } else {
+                // Load the code from a file
+                const scriptContent = await readS3File(scriptPath);
+                codeToExecute =  getPreCodeExecutionScript(scriptContent) + scriptContent; //Saved scripts will always have the post execution script
+                console.log(`Loaded code from file: ${scriptPath}`);
+            }
+
             // Publish initial message
             await publishProgress(chatSessionId, "🚀 Starting PySpark execution environment...", progressIndex++);
 
@@ -647,11 +743,11 @@ export const pysparkTool = tool(
 
                 await publishProgress(chatSessionId, `✅ Session ready! Setting up environment... (Session ID: ${sessionId})`, progressIndex++);
 
-                // Add pulp library from S3
-                const setS3PrefixResult = await executeCalculation(
+                // Setup the session with functions relevant to the user's chat session
+                const sessionSetupResult = await executeCalculation(
                     athenaClient,
                     sessionId,
-                    getSessionSetupScript(),
+                    getSessionSetupScript() + additionalSetupScript   ,
                     "Session Setup",
                     chatSessionId,
                     progressIndex,
@@ -664,7 +760,7 @@ export const pysparkTool = tool(
                     }
                 );
 
-                progressIndex = setS3PrefixResult.newProgressIndex;
+                progressIndex = sessionSetupResult.newProgressIndex;
             }
 
             await publishProgress(chatSessionId, `✅ Submitting your PySpark code for execution... (Session ID: ${sessionId})`, progressIndex++);
@@ -673,7 +769,7 @@ export const pysparkTool = tool(
             const codeResult = await executeCalculation(
                 athenaClient,
                 sessionId,
-                code + getPostCodeExecutionScript(),
+                codeToExecute,
                 description,
                 chatSessionId,
                 progressIndex,
@@ -743,17 +839,20 @@ Use this tool to execute PySpark code using AWS Athena. The tool will create an 
 execute the provided PySpark code, and return the execution results.
 
 Important notes:
-- IMPORTANT: This execution environment already has these functions defined: uploadDfToS3, getDataFrameFromS3, uploadFileToS3. You can use them directly in your code without importing them.
-- Use the uploadDfToS3 function to save your DataFrames to S3 and getDataFrameFromS3 to load your csv files from S3.
+- When fitting curves, ALWAYS check the curve fit quality!
+- Before loading a csv file from S3, read the file to check the column names and data types.
 - Any files saved to the working directory will be uploaded to the user's chat session's artifacts in S3.
 - The file hiearchy will be perserved when uploading files from the working directory to S3 (ex: data/dataframe.csv will be uploaded as data/dataframe.csv in the chat session's S3 prefix).
 - Save data files under the data/ directory.
 - Save plot files under the plots/ directory.
 - Perfer saving dfs with pandas instead of with spark.
+- If you need to load a csv file from S3, use the pd.read_csv function.
 - The 'spark' session is already initialized in the execution environment
 - You don't need to import SparkSession or create a new session
 - The STDOUT and STDERR are captured and returned in the response
 - The execution results will be returned directly in the response
+- When converting strings to dates, handle errors by using: pd.to_datetime(events_df['EventDate'], errors='coerce')
+- Don't use this tool to write reports. Print data requried for the report to the console.
 
 Example usage:
 - Perform data analysis using PySpark
@@ -763,9 +862,9 @@ Example usage:
 
 Simple example:
 \`\`\`python
-# Create a sample DataFrame
-data = [("Alice", 34), ("Bob", 45), ("Charlie", 29)]
-df = spark.createDataFrame(data, ["Name", "Age"])
+# Load a csv file from S3
+df_pd = pd.read_csv('data/example.csv')
+df = spark.createDataFrame(df_pd)
 
 # Show the DataFrame
 print("Sample DataFrame:")
@@ -784,34 +883,8 @@ df.toPandas().to_csv('data/dataframe.csv', header=True, mode='overwrite')
 # Read the DataFrame from S3
 df = getDataFrameFromS3('data/dataframe.csv')
 
-
 # Show the DataFrame
 df.show()
-\`\`\`
-
-Example using a solver:
-\`\`\`python
-from kiwisolver import Solver, Variable
-
-x1 = Variable('x1')
-x2 = Variable('x2')
-xm = Variable('xm')
-
-constraints = [x1 >= 0, x2 <= 100, x2 >= x1 + 10, xm == (x1 + x2) / 2]
-
-solver = Solver()
-
-for cn in constraints:
-    solver.addConstraint(cn)
-
-solver.addConstraint((x1 == 40) | "weak")
-
-solver.addEditVariable(xm, 'strong')
-
-solver.suggestValue(xm, 60)
-
-solver.updateVariables()
-print(xm.value(), x1.value(), x2.value())
 \`\`\`
 
 Example saving a plot to S3:
@@ -855,7 +928,7 @@ pytz==2022.1
 scikit-learn==1.1.1
 scipy==1.8.1
 pyarrow==9.0.0
-`,
+` + (props.additionalToolDescription || ''),
         schema: pysparkToolSchema,
     }
 );
