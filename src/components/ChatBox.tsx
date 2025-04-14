@@ -204,30 +204,76 @@ const ChatBox = (params: {
 
   // Update function to handle message regeneration
   const handleRegenerateMessage = useCallback(async (messageId: string, messageText: string) => {
-    // Find the index of the message to regenerate
-    const messageIndex = messages.findIndex(msg => msg.id === messageId);
     
-    if (messageIndex !== -1) {
-      // Set the message text as the current input
-      setUserInput(messageText);
+    // Find the message to regenerate to get its timestamp
+    const messageToRegenerate = messages.find(msg => msg.id === messageId);
+
+    console.log(`Regenerating messages created after: ${messageToRegenerate?.createdAt} in chat session: ${params.chatSessionId}`)
+    console.log(`Message to regenerate: `, messageToRegenerate)
+
+    if (!messageToRegenerate?.createdAt) {
+      console.error('Message to regenerate not found or missing timestamp');
+      return false;
+    }
+
+    // Set the message text as the current input
+    setUserInput(messageText);
+    
+    try {
+      // Get all messages after the selected message's timestamp
+      const { data: messagesToDelete } = await amplifyClient.models.ChatMessage.listChatMessageByChatSessionIdAndCreatedAt({
+        chatSessionId: params.chatSessionId,
+        createdAt: { ge: messageToRegenerate.createdAt }
+      });
+
+      // Delete messages from the API
+      if (!messagesToDelete || messagesToDelete.length === 0) {
+        console.error('No messages found to delete');
+        return false;
+      }
+
+      const totalMessages = messagesToDelete.length;
+      let deletedCount = 0;
       
       try {
-        // Find the clicked message and all subsequent messages to delete from API
-        const messagesToDelete = messages.filter((_, index) => index >= messageIndex);
+        // Store IDs of messages to be deleted
+        const messageIdsToDelete = new Set(
+          messagesToDelete
+            .filter(msg => msg !== null && msg !== undefined)  // Add null/undefined check
+            .map(msg => msg.id)
+            .filter((id): id is string => id !== undefined)
+        );
         
-        // Delete messages from the API
-        for (const msgToDelete of messagesToDelete) {
-          if (msgToDelete.id) {
-            await amplifyClient.models.ChatMessage.delete({
-              id: msgToDelete.id
-            });
-            console.log(`Deleted message ${msgToDelete.id} from API`);
-          }
-        }
+        // Create an array of deletion promises
+        const deletionPromises = messagesToDelete
+          .filter(msg => msg !== null && msg !== undefined && msg.id)  // Add null/undefined check
+          .map(async (msgToDelete) => {
+            if (msgToDelete.id) {
+              await amplifyClient.models.ChatMessage.delete({
+                id: msgToDelete.id
+              });
+              deletedCount++;
+              console.log(`Deleted message ${msgToDelete.id} from API (${deletedCount}/${totalMessages})`);
+            }
+          });
         
-        // Remove messages from UI
-        const messagesBeforeRegeneratedMessage = messages.filter((_, index) => index < messageIndex);
-        setMessages(messagesBeforeRegeneratedMessage);
+        // Wait for all deletions to complete
+        await Promise.all(deletionPromises);
+
+        // Remove messages from UI immediately after successful API deletion
+        setMessages(prevMessages => 
+          prevMessages.filter(msg => 
+            // Keep message if:
+            // 1. It has a valid createdAt timestamp
+            // 2. It was created before the message we're regenerating
+            // 3. Its ID is not in the set of messages to delete
+            msg.createdAt && 
+            messageToRegenerate.createdAt && 
+            msg.createdAt < messageToRegenerate.createdAt && 
+            typeof msg.id === 'string' && 
+            !messageIdsToDelete.has(msg.id)
+          )
+        );
         
         // Clear streaming message if any
         setStreamChunkMessage(undefined);
@@ -241,13 +287,19 @@ const ChatBox = (params: {
           top: messagesContainerRef.current.scrollHeight,
           behavior: 'smooth'
         });
+
+        return true; // Indicate successful completion
       } catch (error) {
         console.error('Error deleting messages:', error);
-        // Ensure loading state is reset even if there's an error
-        setIsLoading(false);
+        return false;
       }
+    } catch (error) {
+      console.error('Error in message regeneration:', error);
+      // Ensure loading state is reset even if there's an error
+      setIsLoading(false);
+      return false;
     }
-  }, [messages, setUserInput, setStreamChunkMessage, setResponseStreamChunks, setMessages, setIsLoading]);
+  }, [messages, params.chatSessionId, setUserInput, setStreamChunkMessage, setResponseStreamChunks, setMessages, setIsLoading]);
 
   const handleSend = useCallback(async (userMessage: string) => {
     if (userMessage.trim()) {

@@ -23,6 +23,21 @@ const TextToTableToolComponent = ({ content, theme }: {
     React.useEffect(() => {
         try {
             const parsedData = JSON.parse(content?.text || '{}');
+            // Filter out relevanceScore and relevanceExplanation columns
+            if (parsedData.columns) {
+                parsedData.columns = parsedData.columns.filter((col: string) => 
+                    col !== 'relevanceScore' && col !== 'relevanceExplanation'
+                );
+                // Also remove these fields from the data objects
+                if (parsedData.data) {
+                    parsedData.data = parsedData.data.map((row: Record<string, string | undefined>) => {
+                        const newRow = { ...row };
+                        delete newRow.relevanceScore;
+                        delete newRow.relevanceExplanation;
+                        return newRow;
+                    });
+                }
+            }
             setTableData(parsedData);
             setError(false);
         } catch {
@@ -196,12 +211,12 @@ const TextToTableToolComponent = ({ content, theme }: {
                     </thead>
                     <tbody>
                         {paginatedData.map((row: Record<string, string | undefined>, rowIndex: number) => {
-                            const hasFilePath = !!row.filePath;
+                            const hasFilePath = !!row.FilePath;
                             const rowBgColor = rowIndex % 2 === 0 ? theme.palette.common.white : theme.palette.grey[50];
                             
                             return (
                             <tr
-                                key={`row-${rowIndex}-${row.filePath || rowIndex}`}
+                                key={`row-${rowIndex}-${row.FilePath || rowIndex}`}
                                 style={{
                                     backgroundColor: rowBgColor,
                                     borderBottom: `1px solid ${theme.palette.grey[200]}`,
@@ -209,9 +224,9 @@ const TextToTableToolComponent = ({ content, theme }: {
                                     transition: 'background-color 0.2s ease'
                                 }} 
                                 onClick={() => {
-                                    if (hasFilePath && row.filePath) {
-                                        const encodedPath = row.filePath.split('/').map((segment: string) => encodeURIComponent(segment)).join('/');
-                                        window.open(`/files/${encodedPath}`, '_blank');
+                                    if (hasFilePath && row.FilePath) {
+                                        const encodedPath = row.FilePath.split('/').map((segment: string) => encodeURIComponent(segment)).join('/');
+                                        window.open(`/file/${encodedPath}`, '_blank');
                                     }
                                 }}
                                 onMouseEnter={(e) => {
