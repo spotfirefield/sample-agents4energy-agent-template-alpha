@@ -19,6 +19,7 @@ export const getChatMessage = /* GraphQL */ `query GetChatMessage($id: ID!) {
       __typename
     }
     chatSessionId
+    chatSessionIdUnderscoreFieldName
     content {
       text
       __typename
@@ -50,6 +51,13 @@ export const getChatSession = /* GraphQL */ `query GetChatSession($id: ID!) {
     name
     owner
     updatedAt
+    workSteps {
+      description
+      name
+      result
+      status
+      __typename
+    }
     __typename
   }
 }
@@ -76,15 +84,53 @@ export const getDummyModelToAddIamDirective = /* GraphQL */ `query GetDummyModel
   APITypes.GetDummyModelToAddIamDirectiveQueryVariables,
   APITypes.GetDummyModelToAddIamDirectiveQuery
 >;
-export const invokeAgent = /* GraphQL */ `query InvokeAgent($chatSessionId: ID!, $userInput: String!) {
-  invokeAgent(chatSessionId: $chatSessionId, userInput: $userInput) {
+export const getProject = /* GraphQL */ `query GetProject($id: ID!) {
+  getProject(id: $id) {
+    createdAt
+    description
+    financial {
+      NPV10
+      cost
+      discountedRevenue
+      incirmentalOilRateBOPD
+      incrimentalGasRateMCFD
+      successProbability
+      __typename
+    }
+    foundationModelId
+    id
+    name
+    owner
+    procedureS3Path
+    reportS3Path
+    result
+    sourceChatSessionId
+    status
+    updatedAt
+    __typename
+  }
+}
+` as GeneratedQuery<
+  APITypes.GetProjectQueryVariables,
+  APITypes.GetProjectQuery
+>;
+export const invokeReActAgent = /* GraphQL */ `query InvokeReActAgent(
+  $chatSessionId: ID!
+  $foundationModelId: String
+  $respondToAgent: Boolean
+) {
+  invokeReActAgent(
+    chatSessionId: $chatSessionId
+    foundationModelId: $foundationModelId
+    respondToAgent: $respondToAgent
+  ) {
     success
     __typename
   }
 }
 ` as GeneratedQuery<
-  APITypes.InvokeAgentQueryVariables,
-  APITypes.InvokeAgentQuery
+  APITypes.InvokeReActAgentQueryVariables,
+  APITypes.InvokeReActAgentQuery
 >;
 export const listChatMessageByChatSessionIdAndCreatedAt = /* GraphQL */ `query ListChatMessageByChatSessionIdAndCreatedAt(
   $chatSessionId: ID!
@@ -104,6 +150,7 @@ export const listChatMessageByChatSessionIdAndCreatedAt = /* GraphQL */ `query L
   ) {
     items {
       chatSessionId
+      chatSessionIdUnderscoreFieldName
       createdAt
       id
       owner
@@ -123,6 +170,44 @@ export const listChatMessageByChatSessionIdAndCreatedAt = /* GraphQL */ `query L
   APITypes.ListChatMessageByChatSessionIdAndCreatedAtQueryVariables,
   APITypes.ListChatMessageByChatSessionIdAndCreatedAtQuery
 >;
+export const listChatMessageByChatSessionIdUnderscoreFieldNameAndCreatedAt = /* GraphQL */ `query ListChatMessageByChatSessionIdUnderscoreFieldNameAndCreatedAt(
+  $chatSessionIdUnderscoreFieldName: String!
+  $createdAt: ModelStringKeyConditionInput
+  $filter: ModelChatMessageFilterInput
+  $limit: Int
+  $nextToken: String
+  $sortDirection: ModelSortDirection
+) {
+  listChatMessageByChatSessionIdUnderscoreFieldNameAndCreatedAt(
+    chatSessionIdUnderscoreFieldName: $chatSessionIdUnderscoreFieldName
+    createdAt: $createdAt
+    filter: $filter
+    limit: $limit
+    nextToken: $nextToken
+    sortDirection: $sortDirection
+  ) {
+    items {
+      chatSessionId
+      chatSessionIdUnderscoreFieldName
+      createdAt
+      id
+      owner
+      responseComplete
+      role
+      toolCallId
+      toolCalls
+      toolName
+      updatedAt
+      __typename
+    }
+    nextToken
+    __typename
+  }
+}
+` as GeneratedQuery<
+  APITypes.ListChatMessageByChatSessionIdUnderscoreFieldNameAndCreatedAtQueryVariables,
+  APITypes.ListChatMessageByChatSessionIdUnderscoreFieldNameAndCreatedAtQuery
+>;
 export const listChatMessages = /* GraphQL */ `query ListChatMessages(
   $filter: ModelChatMessageFilterInput
   $limit: Int
@@ -131,6 +216,7 @@ export const listChatMessages = /* GraphQL */ `query ListChatMessages(
   listChatMessages(filter: $filter, limit: $limit, nextToken: $nextToken) {
     items {
       chatSessionId
+      chatSessionIdUnderscoreFieldName
       createdAt
       id
       owner
@@ -196,4 +282,33 @@ export const listDummyModelToAddIamDirectives = /* GraphQL */ `query ListDummyMo
 ` as GeneratedQuery<
   APITypes.ListDummyModelToAddIamDirectivesQueryVariables,
   APITypes.ListDummyModelToAddIamDirectivesQuery
+>;
+export const listProjects = /* GraphQL */ `query ListProjects(
+  $filter: ModelProjectFilterInput
+  $limit: Int
+  $nextToken: String
+) {
+  listProjects(filter: $filter, limit: $limit, nextToken: $nextToken) {
+    items {
+      createdAt
+      description
+      foundationModelId
+      id
+      name
+      owner
+      procedureS3Path
+      reportS3Path
+      result
+      sourceChatSessionId
+      status
+      updatedAt
+      __typename
+    }
+    nextToken
+    __typename
+  }
+}
+` as GeneratedQuery<
+  APITypes.ListProjectsQueryVariables,
+  APITypes.ListProjectsQuery
 >;

@@ -22,6 +22,7 @@ export const createChatMessage = /* GraphQL */ `mutation CreateChatMessage(
       __typename
     }
     chatSessionId
+    chatSessionIdUnderscoreFieldName
     content {
       text
       __typename
@@ -56,6 +57,13 @@ export const createChatSession = /* GraphQL */ `mutation CreateChatSession(
     name
     owner
     updatedAt
+    workSteps {
+      description
+      name
+      result
+      status
+      __typename
+    }
     __typename
   }
 }
@@ -85,6 +93,39 @@ export const createDummyModelToAddIamDirective = /* GraphQL */ `mutation CreateD
   APITypes.CreateDummyModelToAddIamDirectiveMutationVariables,
   APITypes.CreateDummyModelToAddIamDirectiveMutation
 >;
+export const createProject = /* GraphQL */ `mutation CreateProject(
+  $condition: ModelProjectConditionInput
+  $input: CreateProjectInput!
+) {
+  createProject(condition: $condition, input: $input) {
+    createdAt
+    description
+    financial {
+      NPV10
+      cost
+      discountedRevenue
+      incirmentalOilRateBOPD
+      incrimentalGasRateMCFD
+      successProbability
+      __typename
+    }
+    foundationModelId
+    id
+    name
+    owner
+    procedureS3Path
+    reportS3Path
+    result
+    sourceChatSessionId
+    status
+    updatedAt
+    __typename
+  }
+}
+` as GeneratedMutation<
+  APITypes.CreateProjectMutationVariables,
+  APITypes.CreateProjectMutation
+>;
 export const deleteChatMessage = /* GraphQL */ `mutation DeleteChatMessage(
   $condition: ModelChatMessageConditionInput
   $input: DeleteChatMessageInput!
@@ -99,6 +140,7 @@ export const deleteChatMessage = /* GraphQL */ `mutation DeleteChatMessage(
       __typename
     }
     chatSessionId
+    chatSessionIdUnderscoreFieldName
     content {
       text
       __typename
@@ -133,6 +175,13 @@ export const deleteChatSession = /* GraphQL */ `mutation DeleteChatSession(
     name
     owner
     updatedAt
+    workSteps {
+      description
+      name
+      result
+      status
+      __typename
+    }
     __typename
   }
 }
@@ -161,6 +210,39 @@ export const deleteDummyModelToAddIamDirective = /* GraphQL */ `mutation DeleteD
 ` as GeneratedMutation<
   APITypes.DeleteDummyModelToAddIamDirectiveMutationVariables,
   APITypes.DeleteDummyModelToAddIamDirectiveMutation
+>;
+export const deleteProject = /* GraphQL */ `mutation DeleteProject(
+  $condition: ModelProjectConditionInput
+  $input: DeleteProjectInput!
+) {
+  deleteProject(condition: $condition, input: $input) {
+    createdAt
+    description
+    financial {
+      NPV10
+      cost
+      discountedRevenue
+      incirmentalOilRateBOPD
+      incrimentalGasRateMCFD
+      successProbability
+      __typename
+    }
+    foundationModelId
+    id
+    name
+    owner
+    procedureS3Path
+    reportS3Path
+    result
+    sourceChatSessionId
+    status
+    updatedAt
+    __typename
+  }
+}
+` as GeneratedMutation<
+  APITypes.DeleteProjectMutationVariables,
+  APITypes.DeleteProjectMutation
 >;
 export const publishResponseStreamChunk = /* GraphQL */ `mutation PublishResponseStreamChunk(
   $chatSessionId: String!
@@ -196,6 +278,7 @@ export const updateChatMessage = /* GraphQL */ `mutation UpdateChatMessage(
       __typename
     }
     chatSessionId
+    chatSessionIdUnderscoreFieldName
     content {
       text
       __typename
@@ -230,6 +313,13 @@ export const updateChatSession = /* GraphQL */ `mutation UpdateChatSession(
     name
     owner
     updatedAt
+    workSteps {
+      description
+      name
+      result
+      status
+      __typename
+    }
     __typename
   }
 }
@@ -258,4 +348,37 @@ export const updateDummyModelToAddIamDirective = /* GraphQL */ `mutation UpdateD
 ` as GeneratedMutation<
   APITypes.UpdateDummyModelToAddIamDirectiveMutationVariables,
   APITypes.UpdateDummyModelToAddIamDirectiveMutation
+>;
+export const updateProject = /* GraphQL */ `mutation UpdateProject(
+  $condition: ModelProjectConditionInput
+  $input: UpdateProjectInput!
+) {
+  updateProject(condition: $condition, input: $input) {
+    createdAt
+    description
+    financial {
+      NPV10
+      cost
+      discountedRevenue
+      incirmentalOilRateBOPD
+      incrimentalGasRateMCFD
+      successProbability
+      __typename
+    }
+    foundationModelId
+    id
+    name
+    owner
+    procedureS3Path
+    reportS3Path
+    result
+    sourceChatSessionId
+    status
+    updatedAt
+    __typename
+  }
+}
+` as GeneratedMutation<
+  APITypes.UpdateProjectMutationVariables,
+  APITypes.UpdateProjectMutation
 >;

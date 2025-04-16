@@ -55,6 +55,7 @@ const ChatBox = (params: {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const [isScrolledToBottom, setIsScrolledToBottom] = useState(true);
+  // const [selectedAgent, setSelectedAgent] = useState<('reActAgent' | 'planAndExecuteAgent' | 'projectGenerationAgent')>("reActAgent");
 
   //Subscribe to the chat messages for the garden
   useEffect(() => {
@@ -318,19 +319,11 @@ const ChatBox = (params: {
         newMessage: newMessage
       })
 
-      // const { data: newMessageData } = await amplifyClient.models.ChatMessage.create(newMessage)
       if (newMessageData) setMessages([...messages, {
         ...newMessage,
         id: newMessageData.id,
         createdAt: newMessageData.createdAt
       }]);
-
-      // const invokeResponse = await amplifyClient.queries.generateGarden({
-      //   chatSessionId: params.chatSessionId,
-      //   userInput: userInput
-      // })
-
-      // console.log('invokeResponse: ', invokeResponse)
 
       setUserInput('');
     }

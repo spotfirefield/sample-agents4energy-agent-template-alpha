@@ -2,7 +2,7 @@ import { stringify } from "yaml";
 
 import { getConfiguredAmplifyClient } from '../../../utils/amplifyUtils';
 
-import { ChatBedrockConverse, BedrockEmbeddings } from "@langchain/aws";
+import { ChatBedrockConverse } from "@langchain/aws";
 import { HumanMessage, ToolMessage, BaseMessage, SystemMessage, AIMessageChunk } from "@langchain/core/messages";
 import { createReactAgent } from "@langchain/langgraph/prebuilt";
 import { Calculator } from "@langchain/community/tools/calculator";
@@ -16,6 +16,7 @@ import { userInputTool } from "../tools/userInputTool";
 import { pysparkTool } from "../tools/athenaPySparkTool";
 import { webBrowserTool } from "../tools/webBrowserTool";
 import { renderAssetTool } from "../tools/renderAssetTool";
+import { createProjectToolBuilder } from "../tools/createProjectTool";
 import { Schema } from '../../data/resource';
 
 import { getLangChainChatMessagesStartingWithHumanMessage, getLangChainMessageTextContent, publishMessage, stringifyLimitStringLength } from '../../../utils/langChainUtils';
@@ -29,11 +30,13 @@ const cleanupEventEmitter = (emitter: EventEmitter) => {
     emitter.removeAllListeners();
 };
 
-export const handler: Schema["invokeAgent"]["functionHandler"] = async (event, context) => {
+const graphQLFieldName = 'invokeReActAgent'
+
+export const handler: Schema["invokeReActAgent"]["functionHandler"] = async (event, context) => {
     console.log('event:\n', JSON.stringify(event, null, 2))
 
-    // Track resources that need cleanup
-    const resources: { cleanup: () => void }[] = [];
+    const foundationModelId = event.arguments.foundationModelId || process.env.AGENT_MODEL_ID
+    if (!foundationModelId) throw new Error("AGENT_MODEL_ID is not set");
 
     try {
         if (event.arguments.chatSessionId === null) throw new Error("chatSessionId is required");
@@ -53,7 +56,6 @@ export const handler: Schema["invokeAgent"]["functionHandler"] = async (event, c
         if (!bucketName) throw new Error("STORAGE_BUCKET_NAME is not set");
 
         const amplifyClient = getConfiguredAmplifyClient();
-        resources.push({ cleanup: () => { /* Amplify client cleanup if needed */ } });
 
         // This function includes validation to prevent "The text field in the ContentBlock object is blank" errors
         // by ensuring no message content is empty when sent to Bedrock
@@ -63,23 +65,22 @@ export const handler: Schema["invokeAgent"]["functionHandler"] = async (event, c
             model: process.env.AGENT_MODEL_ID,
             // temperature: 0
         });
-        resources.push({ cleanup: () => { 
-            // Close any open connections
-            if ((agentModel as any)._client) {
-                (agentModel as any)._client.destroy();
-            }
-        }});
 
         const agentTools = [
             new Calculator(),
             new DuckDuckGoSearch({maxResults: 3}),
+            webBrowserTool,
             userInputTool,
+            createProjectToolBuilder({
+                sourceChatSessionId: event.arguments.chatSessionId,
+                foundationModelId: foundationModelId
+            }),
             pysparkTool({
                 additionalToolDescription: `
                 When fitting a hyperbolic decline curve to well production data:
                 - You MUST weight the most recent points more x20 more heavily when fitting the curve.
+                - Filter out any points that do not reflect the well's production decline, such as sudden drop offs or spikes.
             `}),
-            webBrowserTool,
             ...s3FileManagementTools,
             renderAssetTool
         ]
@@ -109,16 +110,12 @@ When creating plots:
 - When asked to plot data from a table, look for the specific table mentioned and use that data
 
 When creating reports:
-<<<<<<< HEAD
 - Start the report with a summary which includes:
     - The recommended action.
     - Financial metrics describing any recommended actions.
 - Include sections descirbing any analysis performed, and a list of the source documents or data tables used in the analysis.
+- ALWAYS add footnotes to the report to reference the source documents or data tables used in the analysis.
 - Use iframes to display plots and other files in the report.
-=======
-- Start the report with a summary which includes the recommend action. Then have sections which justify the action.
-- Include source information for all included data.
->>>>>>> main
 - Use the writeFile tool to create the first draft of the report file
 - Use html formatting for the report
 - Put reports in the 'reports' directory
@@ -158,21 +155,15 @@ When using the textToTableTool:
 
         `//.replace(/^\s+/gm, '') //This trims the whitespace from the beginning of each line
 
-        // If the chatSessionMessages ends with a human message, remove it.
-        if (chatSessionMessages.length > 0 &&
-            chatSessionMessages[chatSessionMessages.length - 1] instanceof HumanMessage) {
-            chatSessionMessages.pop();
-        }
-
         const input = {
             messages: [
                 new SystemMessage({
                     content: systemMessageContent
                 }),
                 ...chatSessionMessages,
-                new HumanMessage({
-                    content: event.arguments.userInput || " " // Ensure user input is never empty
-                })
+                // new HumanMessage({
+                //     content: event.arguments.userInput || " " // Ensure user input is never empty
+                // })
             ].filter((message): message is BaseMessage => message !== undefined)
         }
 
@@ -264,6 +255,7 @@ When using the textToTableTool:
 
                                 await publishMessage({
                                     chatSessionId: event.arguments.chatSessionId,
+                                    fieldName: graphQLFieldName,
                                     owner: event.identity.sub,
                                     message: streamChunk
                                 })
@@ -276,19 +268,21 @@ When using the textToTableTool:
             }
         }
 
+        //If the agent is invoked by another agent, create a tool response message with it's output
+        if (event.arguments.respondToAgent) {
+            
+            const toolResponseMessage = new ToolMessage({
+                content: "This is a tool response message",
+                tool_call_id: "123",
+                name: "toolName",
+                // name: graphQLFieldName
+            })
+        }
+
     } catch (error) {
         console.error("Error responding to user:", JSON.stringify(error, null, 2));
         throw error;
     } finally {
-        // Clean up all resources
-        for (const resource of resources) {
-            try {
-                resource.cleanup();
-            } catch (cleanupError) {
-                console.error("Error during cleanup:", cleanupError);
-            }
-        }
-        
         // Clean up any remaining event listeners
         if (process.eventNames().length > 0) {
             process.removeAllListeners();

@@ -6,6 +6,7 @@ export type ChatMessage = {
   __typename: "ChatMessage",
   chatSession?: ChatSession | null,
   chatSessionId?: string | null,
+  chatSessionIdUnderscoreFieldName?: string | null,
   content?: ChatMessageContent | null,
   createdAt?: string | null,
   id: string,
@@ -26,6 +27,7 @@ export type ChatSession = {
   name?: string | null,
   owner?: string | null,
   updatedAt: string,
+  workSteps?:  Array<WorkStep | null > | null,
 };
 
 export type ModelChatMessageConnection = {
@@ -33,6 +35,22 @@ export type ModelChatMessageConnection = {
   items:  Array<ChatMessage | null >,
   nextToken?: string | null,
 };
+
+export type WorkStep = {
+  __typename: "WorkStep",
+  description?: string | null,
+  name?: string | null,
+  result?: string | null,
+  status?: WorkStepStatus | null,
+};
+
+export enum WorkStepStatus {
+  completed = "completed",
+  failed = "failed",
+  in_progress = "in_progress",
+  pending = "pending",
+}
+
 
 export type ChatMessageContent = {
   __typename: "ChatMessageContent",
@@ -62,6 +80,45 @@ export type ResponseStreamChunk = {
   index: number,
 };
 
+export type Project = {
+  __typename: "Project",
+  createdAt: string,
+  description?: string | null,
+  financial?: ProjectFinancial | null,
+  foundationModelId?: string | null,
+  id: string,
+  name?: string | null,
+  owner?: string | null,
+  procedureS3Path?: string | null,
+  reportS3Path?: string | null,
+  result?: string | null,
+  sourceChatSessionId?: string | null,
+  status?: ProjectStatus | null,
+  updatedAt: string,
+};
+
+export type ProjectFinancial = {
+  __typename: "ProjectFinancial",
+  NPV10?: number | null,
+  cost?: number | null,
+  discountedRevenue?: number | null,
+  incirmentalOilRateBOPD?: number | null,
+  incrimentalGasRateMCFD?: number | null,
+  successProbability?: number | null,
+};
+
+export enum ProjectStatus {
+  approved = "approved",
+  completed = "completed",
+  drafting = "drafting",
+  failed = "failed",
+  in_progress = "in_progress",
+  proposed = "proposed",
+  rejected = "rejected",
+  scheduled = "scheduled",
+}
+
+
 export type EventInvocationResponse = {
   __typename: "EventInvocationResponse",
   success: boolean,
@@ -80,6 +137,7 @@ export type ModelStringKeyConditionInput = {
 export type ModelChatMessageFilterInput = {
   and?: Array< ModelChatMessageFilterInput | null > | null,
   chatSessionId?: ModelIDInput | null,
+  chatSessionIdUnderscoreFieldName?: ModelStringInput | null,
   createdAt?: ModelStringInput | null,
   id?: ModelIDInput | null,
   not?: ModelChatMessageFilterInput | null,
@@ -200,9 +258,39 @@ export type ModelDummyModelToAddIamDirectiveConnection = {
   nextToken?: string | null,
 };
 
+export type ModelProjectFilterInput = {
+  and?: Array< ModelProjectFilterInput | null > | null,
+  createdAt?: ModelStringInput | null,
+  description?: ModelStringInput | null,
+  foundationModelId?: ModelStringInput | null,
+  id?: ModelIDInput | null,
+  name?: ModelStringInput | null,
+  not?: ModelProjectFilterInput | null,
+  or?: Array< ModelProjectFilterInput | null > | null,
+  owner?: ModelStringInput | null,
+  procedureS3Path?: ModelStringInput | null,
+  reportS3Path?: ModelStringInput | null,
+  result?: ModelStringInput | null,
+  sourceChatSessionId?: ModelIDInput | null,
+  status?: ModelProjectStatusInput | null,
+  updatedAt?: ModelStringInput | null,
+};
+
+export type ModelProjectStatusInput = {
+  eq?: ProjectStatus | null,
+  ne?: ProjectStatus | null,
+};
+
+export type ModelProjectConnection = {
+  __typename: "ModelProjectConnection",
+  items:  Array<Project | null >,
+  nextToken?: string | null,
+};
+
 export type ModelChatMessageConditionInput = {
   and?: Array< ModelChatMessageConditionInput | null > | null,
   chatSessionId?: ModelIDInput | null,
+  chatSessionIdUnderscoreFieldName?: ModelStringInput | null,
   createdAt?: ModelStringInput | null,
   not?: ModelChatMessageConditionInput | null,
   or?: Array< ModelChatMessageConditionInput | null > | null,
@@ -217,6 +305,7 @@ export type ModelChatMessageConditionInput = {
 
 export type CreateChatMessageInput = {
   chatSessionId?: string | null,
+  chatSessionIdUnderscoreFieldName?: string | null,
   content?: ChatMessageContentInput | null,
   createdAt?: string | null,
   id?: string | null,
@@ -245,6 +334,14 @@ export type ModelChatSessionConditionInput = {
 export type CreateChatSessionInput = {
   id?: string | null,
   name?: string | null,
+  workSteps?: Array< WorkStepInput | null > | null,
+};
+
+export type WorkStepInput = {
+  description?: string | null,
+  name?: string | null,
+  result?: string | null,
+  status?: WorkStepStatus | null,
 };
 
 export type ModelDummyModelToAddIamDirectiveConditionInput = {
@@ -267,6 +364,45 @@ export type ResponseStreamChunkInput = {
   index: number,
 };
 
+export type ModelProjectConditionInput = {
+  and?: Array< ModelProjectConditionInput | null > | null,
+  createdAt?: ModelStringInput | null,
+  description?: ModelStringInput | null,
+  foundationModelId?: ModelStringInput | null,
+  name?: ModelStringInput | null,
+  not?: ModelProjectConditionInput | null,
+  or?: Array< ModelProjectConditionInput | null > | null,
+  owner?: ModelStringInput | null,
+  procedureS3Path?: ModelStringInput | null,
+  reportS3Path?: ModelStringInput | null,
+  result?: ModelStringInput | null,
+  sourceChatSessionId?: ModelIDInput | null,
+  status?: ModelProjectStatusInput | null,
+  updatedAt?: ModelStringInput | null,
+};
+
+export type CreateProjectInput = {
+  description?: string | null,
+  financial?: ProjectFinancialInput | null,
+  foundationModelId?: string | null,
+  id?: string | null,
+  name?: string | null,
+  procedureS3Path?: string | null,
+  reportS3Path?: string | null,
+  result?: string | null,
+  sourceChatSessionId?: string | null,
+  status?: ProjectStatus | null,
+};
+
+export type ProjectFinancialInput = {
+  NPV10?: number | null,
+  cost?: number | null,
+  discountedRevenue?: number | null,
+  incirmentalOilRateBOPD?: number | null,
+  incrimentalGasRateMCFD?: number | null,
+  successProbability?: number | null,
+};
+
 export type DeleteChatMessageInput = {
   id: string,
 };
@@ -279,8 +415,13 @@ export type DeleteDummyModelToAddIamDirectiveInput = {
   id: string,
 };
 
+export type DeleteProjectInput = {
+  id: string,
+};
+
 export type UpdateChatMessageInput = {
   chatSessionId?: string | null,
+  chatSessionIdUnderscoreFieldName?: string | null,
   content?: ChatMessageContentInput | null,
   createdAt?: string | null,
   id: string,
@@ -295,6 +436,7 @@ export type UpdateChatMessageInput = {
 export type UpdateChatSessionInput = {
   id: string,
   name?: string | null,
+  workSteps?: Array< WorkStepInput | null > | null,
 };
 
 export type UpdateDummyModelToAddIamDirectiveInput = {
@@ -302,9 +444,23 @@ export type UpdateDummyModelToAddIamDirectiveInput = {
   responseStreamChunk?: ResponseStreamChunkInput | null,
 };
 
+export type UpdateProjectInput = {
+  description?: string | null,
+  financial?: ProjectFinancialInput | null,
+  foundationModelId?: string | null,
+  id: string,
+  name?: string | null,
+  procedureS3Path?: string | null,
+  reportS3Path?: string | null,
+  result?: string | null,
+  sourceChatSessionId?: string | null,
+  status?: ProjectStatus | null,
+};
+
 export type ModelSubscriptionChatMessageFilterInput = {
   and?: Array< ModelSubscriptionChatMessageFilterInput | null > | null,
   chatSessionId?: ModelSubscriptionIDInput | null,
+  chatSessionIdUnderscoreFieldName?: ModelSubscriptionStringInput | null,
   createdAt?: ModelSubscriptionStringInput | null,
   id?: ModelSubscriptionIDInput | null,
   or?: Array< ModelSubscriptionChatMessageFilterInput | null > | null,
@@ -371,6 +527,23 @@ export type ModelSubscriptionDummyModelToAddIamDirectiveFilterInput = {
   updatedAt?: ModelSubscriptionStringInput | null,
 };
 
+export type ModelSubscriptionProjectFilterInput = {
+  and?: Array< ModelSubscriptionProjectFilterInput | null > | null,
+  createdAt?: ModelSubscriptionStringInput | null,
+  description?: ModelSubscriptionStringInput | null,
+  foundationModelId?: ModelSubscriptionStringInput | null,
+  id?: ModelSubscriptionIDInput | null,
+  name?: ModelSubscriptionStringInput | null,
+  or?: Array< ModelSubscriptionProjectFilterInput | null > | null,
+  owner?: ModelStringInput | null,
+  procedureS3Path?: ModelSubscriptionStringInput | null,
+  reportS3Path?: ModelSubscriptionStringInput | null,
+  result?: ModelSubscriptionStringInput | null,
+  sourceChatSessionId?: ModelSubscriptionIDInput | null,
+  status?: ModelSubscriptionStringInput | null,
+  updatedAt?: ModelSubscriptionStringInput | null,
+};
+
 export type GetChatMessageQueryVariables = {
   id: string,
 };
@@ -387,6 +560,7 @@ export type GetChatMessageQuery = {
       updatedAt: string,
     } | null,
     chatSessionId?: string | null,
+    chatSessionIdUnderscoreFieldName?: string | null,
     content?:  {
       __typename: "ChatMessageContent",
       text?: string | null,
@@ -419,6 +593,13 @@ export type GetChatSessionQuery = {
     name?: string | null,
     owner?: string | null,
     updatedAt: string,
+    workSteps?:  Array< {
+      __typename: "WorkStep",
+      description?: string | null,
+      name?: string | null,
+      result?: string | null,
+      status?: WorkStepStatus | null,
+    } | null > | null,
   } | null,
 };
 
@@ -442,13 +623,45 @@ export type GetDummyModelToAddIamDirectiveQuery = {
   } | null,
 };
 
-export type InvokeAgentQueryVariables = {
-  chatSessionId: string,
-  userInput: string,
+export type GetProjectQueryVariables = {
+  id: string,
 };
 
-export type InvokeAgentQuery = {
-  invokeAgent?:  {
+export type GetProjectQuery = {
+  getProject?:  {
+    __typename: "Project",
+    createdAt: string,
+    description?: string | null,
+    financial?:  {
+      __typename: "ProjectFinancial",
+      NPV10?: number | null,
+      cost?: number | null,
+      discountedRevenue?: number | null,
+      incirmentalOilRateBOPD?: number | null,
+      incrimentalGasRateMCFD?: number | null,
+      successProbability?: number | null,
+    } | null,
+    foundationModelId?: string | null,
+    id: string,
+    name?: string | null,
+    owner?: string | null,
+    procedureS3Path?: string | null,
+    reportS3Path?: string | null,
+    result?: string | null,
+    sourceChatSessionId?: string | null,
+    status?: ProjectStatus | null,
+    updatedAt: string,
+  } | null,
+};
+
+export type InvokeReActAgentQueryVariables = {
+  chatSessionId: string,
+  foundationModelId?: string | null,
+  respondToAgent?: boolean | null,
+};
+
+export type InvokeReActAgentQuery = {
+  invokeReActAgent?:  {
     __typename: "EventInvocationResponse",
     success: boolean,
   } | null,
@@ -469,6 +682,37 @@ export type ListChatMessageByChatSessionIdAndCreatedAtQuery = {
     items:  Array< {
       __typename: "ChatMessage",
       chatSessionId?: string | null,
+      chatSessionIdUnderscoreFieldName?: string | null,
+      createdAt?: string | null,
+      id: string,
+      owner?: string | null,
+      responseComplete?: boolean | null,
+      role?: ChatMessageRole | null,
+      toolCallId?: string | null,
+      toolCalls?: string | null,
+      toolName?: string | null,
+      updatedAt: string,
+    } | null >,
+    nextToken?: string | null,
+  } | null,
+};
+
+export type ListChatMessageByChatSessionIdUnderscoreFieldNameAndCreatedAtQueryVariables = {
+  chatSessionIdUnderscoreFieldName: string,
+  createdAt?: ModelStringKeyConditionInput | null,
+  filter?: ModelChatMessageFilterInput | null,
+  limit?: number | null,
+  nextToken?: string | null,
+  sortDirection?: ModelSortDirection | null,
+};
+
+export type ListChatMessageByChatSessionIdUnderscoreFieldNameAndCreatedAtQuery = {
+  listChatMessageByChatSessionIdUnderscoreFieldNameAndCreatedAt?:  {
+    __typename: "ModelChatMessageConnection",
+    items:  Array< {
+      __typename: "ChatMessage",
+      chatSessionId?: string | null,
+      chatSessionIdUnderscoreFieldName?: string | null,
       createdAt?: string | null,
       id: string,
       owner?: string | null,
@@ -495,6 +739,7 @@ export type ListChatMessagesQuery = {
     items:  Array< {
       __typename: "ChatMessage",
       chatSessionId?: string | null,
+      chatSessionIdUnderscoreFieldName?: string | null,
       createdAt?: string | null,
       id: string,
       owner?: string | null,
@@ -550,6 +795,34 @@ export type ListDummyModelToAddIamDirectivesQuery = {
   } | null,
 };
 
+export type ListProjectsQueryVariables = {
+  filter?: ModelProjectFilterInput | null,
+  limit?: number | null,
+  nextToken?: string | null,
+};
+
+export type ListProjectsQuery = {
+  listProjects?:  {
+    __typename: "ModelProjectConnection",
+    items:  Array< {
+      __typename: "Project",
+      createdAt: string,
+      description?: string | null,
+      foundationModelId?: string | null,
+      id: string,
+      name?: string | null,
+      owner?: string | null,
+      procedureS3Path?: string | null,
+      reportS3Path?: string | null,
+      result?: string | null,
+      sourceChatSessionId?: string | null,
+      status?: ProjectStatus | null,
+      updatedAt: string,
+    } | null >,
+    nextToken?: string | null,
+  } | null,
+};
+
 export type CreateChatMessageMutationVariables = {
   condition?: ModelChatMessageConditionInput | null,
   input: CreateChatMessageInput,
@@ -567,6 +840,7 @@ export type CreateChatMessageMutation = {
       updatedAt: string,
     } | null,
     chatSessionId?: string | null,
+    chatSessionIdUnderscoreFieldName?: string | null,
     content?:  {
       __typename: "ChatMessageContent",
       text?: string | null,
@@ -600,6 +874,13 @@ export type CreateChatSessionMutation = {
     name?: string | null,
     owner?: string | null,
     updatedAt: string,
+    workSteps?:  Array< {
+      __typename: "WorkStep",
+      description?: string | null,
+      name?: string | null,
+      result?: string | null,
+      status?: WorkStepStatus | null,
+    } | null > | null,
   } | null,
 };
 
@@ -624,6 +905,38 @@ export type CreateDummyModelToAddIamDirectiveMutation = {
   } | null,
 };
 
+export type CreateProjectMutationVariables = {
+  condition?: ModelProjectConditionInput | null,
+  input: CreateProjectInput,
+};
+
+export type CreateProjectMutation = {
+  createProject?:  {
+    __typename: "Project",
+    createdAt: string,
+    description?: string | null,
+    financial?:  {
+      __typename: "ProjectFinancial",
+      NPV10?: number | null,
+      cost?: number | null,
+      discountedRevenue?: number | null,
+      incirmentalOilRateBOPD?: number | null,
+      incrimentalGasRateMCFD?: number | null,
+      successProbability?: number | null,
+    } | null,
+    foundationModelId?: string | null,
+    id: string,
+    name?: string | null,
+    owner?: string | null,
+    procedureS3Path?: string | null,
+    reportS3Path?: string | null,
+    result?: string | null,
+    sourceChatSessionId?: string | null,
+    status?: ProjectStatus | null,
+    updatedAt: string,
+  } | null,
+};
+
 export type DeleteChatMessageMutationVariables = {
   condition?: ModelChatMessageConditionInput | null,
   input: DeleteChatMessageInput,
@@ -641,6 +954,7 @@ export type DeleteChatMessageMutation = {
       updatedAt: string,
     } | null,
     chatSessionId?: string | null,
+    chatSessionIdUnderscoreFieldName?: string | null,
     content?:  {
       __typename: "ChatMessageContent",
       text?: string | null,
@@ -674,6 +988,13 @@ export type DeleteChatSessionMutation = {
     name?: string | null,
     owner?: string | null,
     updatedAt: string,
+    workSteps?:  Array< {
+      __typename: "WorkStep",
+      description?: string | null,
+      name?: string | null,
+      result?: string | null,
+      status?: WorkStepStatus | null,
+    } | null > | null,
   } | null,
 };
 
@@ -694,6 +1015,38 @@ export type DeleteDummyModelToAddIamDirectiveMutation = {
       chunkText: string,
       index: number,
     } | null,
+    updatedAt: string,
+  } | null,
+};
+
+export type DeleteProjectMutationVariables = {
+  condition?: ModelProjectConditionInput | null,
+  input: DeleteProjectInput,
+};
+
+export type DeleteProjectMutation = {
+  deleteProject?:  {
+    __typename: "Project",
+    createdAt: string,
+    description?: string | null,
+    financial?:  {
+      __typename: "ProjectFinancial",
+      NPV10?: number | null,
+      cost?: number | null,
+      discountedRevenue?: number | null,
+      incirmentalOilRateBOPD?: number | null,
+      incrimentalGasRateMCFD?: number | null,
+      successProbability?: number | null,
+    } | null,
+    foundationModelId?: string | null,
+    id: string,
+    name?: string | null,
+    owner?: string | null,
+    procedureS3Path?: string | null,
+    reportS3Path?: string | null,
+    result?: string | null,
+    sourceChatSessionId?: string | null,
+    status?: ProjectStatus | null,
     updatedAt: string,
   } | null,
 };
@@ -730,6 +1083,7 @@ export type UpdateChatMessageMutation = {
       updatedAt: string,
     } | null,
     chatSessionId?: string | null,
+    chatSessionIdUnderscoreFieldName?: string | null,
     content?:  {
       __typename: "ChatMessageContent",
       text?: string | null,
@@ -763,6 +1117,13 @@ export type UpdateChatSessionMutation = {
     name?: string | null,
     owner?: string | null,
     updatedAt: string,
+    workSteps?:  Array< {
+      __typename: "WorkStep",
+      description?: string | null,
+      name?: string | null,
+      result?: string | null,
+      status?: WorkStepStatus | null,
+    } | null > | null,
   } | null,
 };
 
@@ -787,6 +1148,38 @@ export type UpdateDummyModelToAddIamDirectiveMutation = {
   } | null,
 };
 
+export type UpdateProjectMutationVariables = {
+  condition?: ModelProjectConditionInput | null,
+  input: UpdateProjectInput,
+};
+
+export type UpdateProjectMutation = {
+  updateProject?:  {
+    __typename: "Project",
+    createdAt: string,
+    description?: string | null,
+    financial?:  {
+      __typename: "ProjectFinancial",
+      NPV10?: number | null,
+      cost?: number | null,
+      discountedRevenue?: number | null,
+      incirmentalOilRateBOPD?: number | null,
+      incrimentalGasRateMCFD?: number | null,
+      successProbability?: number | null,
+    } | null,
+    foundationModelId?: string | null,
+    id: string,
+    name?: string | null,
+    owner?: string | null,
+    procedureS3Path?: string | null,
+    reportS3Path?: string | null,
+    result?: string | null,
+    sourceChatSessionId?: string | null,
+    status?: ProjectStatus | null,
+    updatedAt: string,
+  } | null,
+};
+
 export type OnCreateChatMessageSubscriptionVariables = {
   filter?: ModelSubscriptionChatMessageFilterInput | null,
   owner?: string | null,
@@ -804,6 +1197,7 @@ export type OnCreateChatMessageSubscription = {
       updatedAt: string,
     } | null,
     chatSessionId?: string | null,
+    chatSessionIdUnderscoreFieldName?: string | null,
     content?:  {
       __typename: "ChatMessageContent",
       text?: string | null,
@@ -837,6 +1231,13 @@ export type OnCreateChatSessionSubscription = {
     name?: string | null,
     owner?: string | null,
     updatedAt: string,
+    workSteps?:  Array< {
+      __typename: "WorkStep",
+      description?: string | null,
+      name?: string | null,
+      result?: string | null,
+      status?: WorkStepStatus | null,
+    } | null > | null,
   } | null,
 };
 
@@ -861,6 +1262,38 @@ export type OnCreateDummyModelToAddIamDirectiveSubscription = {
   } | null,
 };
 
+export type OnCreateProjectSubscriptionVariables = {
+  filter?: ModelSubscriptionProjectFilterInput | null,
+  owner?: string | null,
+};
+
+export type OnCreateProjectSubscription = {
+  onCreateProject?:  {
+    __typename: "Project",
+    createdAt: string,
+    description?: string | null,
+    financial?:  {
+      __typename: "ProjectFinancial",
+      NPV10?: number | null,
+      cost?: number | null,
+      discountedRevenue?: number | null,
+      incirmentalOilRateBOPD?: number | null,
+      incrimentalGasRateMCFD?: number | null,
+      successProbability?: number | null,
+    } | null,
+    foundationModelId?: string | null,
+    id: string,
+    name?: string | null,
+    owner?: string | null,
+    procedureS3Path?: string | null,
+    reportS3Path?: string | null,
+    result?: string | null,
+    sourceChatSessionId?: string | null,
+    status?: ProjectStatus | null,
+    updatedAt: string,
+  } | null,
+};
+
 export type OnDeleteChatMessageSubscriptionVariables = {
   filter?: ModelSubscriptionChatMessageFilterInput | null,
   owner?: string | null,
@@ -878,6 +1311,7 @@ export type OnDeleteChatMessageSubscription = {
       updatedAt: string,
     } | null,
     chatSessionId?: string | null,
+    chatSessionIdUnderscoreFieldName?: string | null,
     content?:  {
       __typename: "ChatMessageContent",
       text?: string | null,
@@ -911,6 +1345,13 @@ export type OnDeleteChatSessionSubscription = {
     name?: string | null,
     owner?: string | null,
     updatedAt: string,
+    workSteps?:  Array< {
+      __typename: "WorkStep",
+      description?: string | null,
+      name?: string | null,
+      result?: string | null,
+      status?: WorkStepStatus | null,
+    } | null > | null,
   } | null,
 };
 
@@ -935,6 +1376,38 @@ export type OnDeleteDummyModelToAddIamDirectiveSubscription = {
   } | null,
 };
 
+export type OnDeleteProjectSubscriptionVariables = {
+  filter?: ModelSubscriptionProjectFilterInput | null,
+  owner?: string | null,
+};
+
+export type OnDeleteProjectSubscription = {
+  onDeleteProject?:  {
+    __typename: "Project",
+    createdAt: string,
+    description?: string | null,
+    financial?:  {
+      __typename: "ProjectFinancial",
+      NPV10?: number | null,
+      cost?: number | null,
+      discountedRevenue?: number | null,
+      incirmentalOilRateBOPD?: number | null,
+      incrimentalGasRateMCFD?: number | null,
+      successProbability?: number | null,
+    } | null,
+    foundationModelId?: string | null,
+    id: string,
+    name?: string | null,
+    owner?: string | null,
+    procedureS3Path?: string | null,
+    reportS3Path?: string | null,
+    result?: string | null,
+    sourceChatSessionId?: string | null,
+    status?: ProjectStatus | null,
+    updatedAt: string,
+  } | null,
+};
+
 export type OnUpdateChatMessageSubscriptionVariables = {
   filter?: ModelSubscriptionChatMessageFilterInput | null,
   owner?: string | null,
@@ -952,6 +1425,7 @@ export type OnUpdateChatMessageSubscription = {
       updatedAt: string,
     } | null,
     chatSessionId?: string | null,
+    chatSessionIdUnderscoreFieldName?: string | null,
     content?:  {
       __typename: "ChatMessageContent",
       text?: string | null,
@@ -985,6 +1459,13 @@ export type OnUpdateChatSessionSubscription = {
     name?: string | null,
     owner?: string | null,
     updatedAt: string,
+    workSteps?:  Array< {
+      __typename: "WorkStep",
+      description?: string | null,
+      name?: string | null,
+      result?: string | null,
+      status?: WorkStepStatus | null,
+    } | null > | null,
   } | null,
 };
 
@@ -1005,6 +1486,38 @@ export type OnUpdateDummyModelToAddIamDirectiveSubscription = {
       chunkText: string,
       index: number,
     } | null,
+    updatedAt: string,
+  } | null,
+};
+
+export type OnUpdateProjectSubscriptionVariables = {
+  filter?: ModelSubscriptionProjectFilterInput | null,
+  owner?: string | null,
+};
+
+export type OnUpdateProjectSubscription = {
+  onUpdateProject?:  {
+    __typename: "Project",
+    createdAt: string,
+    description?: string | null,
+    financial?:  {
+      __typename: "ProjectFinancial",
+      NPV10?: number | null,
+      cost?: number | null,
+      discountedRevenue?: number | null,
+      incirmentalOilRateBOPD?: number | null,
+      incrimentalGasRateMCFD?: number | null,
+      successProbability?: number | null,
+    } | null,
+    foundationModelId?: string | null,
+    id: string,
+    name?: string | null,
+    owner?: string | null,
+    procedureS3Path?: string | null,
+    reportS3Path?: string | null,
+    result?: string | null,
+    sourceChatSessionId?: string | null,
+    status?: ProjectStatus | null,
     updatedAt: string,
   } | null,
 };
