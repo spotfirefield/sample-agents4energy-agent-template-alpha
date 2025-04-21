@@ -12,19 +12,19 @@ const createProjectToolSchema = z.object({
     status: z.nativeEnum(ProjectStatus).pipe(z.enum([ProjectStatus.drafting, ProjectStatus.proposed])),
     result: z.string().optional(),
     procedureS3Path: z.string().optional(),
-    reportS3Path: z.string(),
+    reportS3Path: z.string().describe("The path to the executive report for the project. Should always be an .html file."),
     financial: z.object({
-        discountedRevenue: z.number(),
+        // discountedRevenue: z.number().describe("Over the economic life of the project, the discounted revenue is the sum of the discounted cash flows."),
         cost: z.number(),
-        NPV10: z.number(),
+        NPV10: z.number().describe("The net present value of the project at a 10% discount rate."),
         successProbability: z.number(),
         incrimentalGasRateMCFD: z.number().optional(),
         incirmentalOilRateBOPD: z.number().optional(),
-    }),
+    }).describe("This information should ALWAYS come from outputs of the pysparkTool or files which the pysparkTool created."),
     nextAction: z.object({
         buttonTextBeforeClick: z.string(),
         buttonTextAfterClick: z.string(),
-    }).describe("Recommend an action like: 'Request Approval' 'Send procedure to rig manager', or something else that should be done based on the analysis.'"),
+    }).describe("Recommend an action like: 'Schedule Job', 'Send procedure to rig manager', or something else that should be done based on the analysis."),
 });
 
 export const createProjectToolBuilder = (props: {
