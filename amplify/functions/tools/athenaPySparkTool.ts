@@ -5,11 +5,11 @@ import { S3Client, GetObjectCommand } from '@aws-sdk/client-s3';
 import { v4 as uuidv4 } from 'uuid';
 import { getConfiguredAmplifyClient } from '../../../utils/amplifyUtils';
 import { publishResponseStreamChunk } from "../graphql/mutations";
-import { getChatSessionId, getChatSessionPrefix } from "./toolUtils";
+import { getChatSessionId, getChatSessionPrefix, getOrigin } from "./toolUtils";
 import { writeFile } from "./s3ToolBox";
 
 // Environment variables
-const ATHENA_WORKGROUP = process.env.ATHENA_WORKGROUP_NAME || 'pyspark-workgroup';
+const getAthenaWorkgroup = () => process.env.ATHENA_WORKGROUP_NAME;
 const AWS_REGION = process.env.AWS_REGION || 'us-east-1';
 
 export const getSessionSetupScript = () => { 
@@ -20,6 +20,7 @@ import os
 os.makedirs('plots', exist_ok=True)
 os.makedirs('data', exist_ok=True)
 
+s3BucketName = '${process.env.STORAGE_BUCKET_NAME}'
 chatSessionS3Prefix = '${getChatSessionPrefix()}'
 # sc.addPyFile('s3://${process.env.STORAGE_BUCKET_NAME}/pypi/pypi_libs.zip')
 
@@ -56,7 +57,7 @@ def uploadDfToS3(df, file_path):
     s3_client = boto3.client('s3')
     s3_client.put_object(
         Body=csv_content,
-        Bucket='${process.env.STORAGE_BUCKET_NAME}',
+        Bucket=s3BucketName,
         Key=chatSessionS3Prefix + file_path
     )
 
@@ -71,7 +72,7 @@ def getDataFrameFromS3(file_path):
         pyspark.sql.DataFrame: A PySpark DataFrame containing the CSV data
     """
     # Construct the full S3 path
-    full_s3_path = f"s3://${process.env.STORAGE_BUCKET_NAME}/{chatSessionS3Prefix}{file_path}"
+    full_s3_path = f"s3://{s3BucketName}/{chatSessionS3Prefix}{file_path}"
     
     # Use spark.read to read the CSV file directly
     df = spark.read.option("header", "true") \
@@ -112,7 +113,7 @@ def downloadFileFromS3(s3_path):
         s3_key = s3_path if s3_path.startswith('global/') else chatSessionS3Prefix + s3_path
         
         s3_client.download_file(
-            '${process.env.STORAGE_BUCKET_NAME}', 
+            s3BucketName, 
             s3_key,
             local_path
         )
@@ -157,7 +158,7 @@ def uploadFileToS3(file_path, s3_path):
     
     s3_client.upload_file(
         file_path, 
-        '${process.env.STORAGE_BUCKET_NAME}', 
+        s3BucketName, 
         chatSessionS3Prefix + s3_path,
         ExtraArgs=extra_args
     )
@@ -165,37 +166,32 @@ def uploadFileToS3(file_path, s3_path):
 }
 
 export const getPreCodeExecutionScript = (script: string) => { 
-    // Download any files which the code tries to import using pd.read_csv('...') or open('...')
-    // Extract file paths from pd.read_csv calls, handling cases with additional parameters
-    const csvMatches = script?.match(/pd\.read_csv\(['"]([^'"]+)['"](?:\s*,\s*[^)]+)?\)/g) || [];
-    const csvFiles = csvMatches.map(match => {
-        // Extract just the file path from the full pd.read_csv call
-        const pathMatch = match.match(/pd\.read_csv\(['"]([^'"]+)['"]/);
+    // Match any quoted strings that look like file paths (ending with .xxx where xxx is 2-4 characters)
+    const filePathRegex = /['"]([^'"]+\.[a-zA-Z0-9]{2,4})['"](?:\s*[,)}]|$)/g;
+    const matches = script?.match(filePathRegex) || [];
+    
+    // Extract just the file paths from the matches
+    const filePaths = matches.map(match => {
+        const pathMatch = match.match(/['"]([^'"]+\.[a-zA-Z0-9]{2,4})['"]/);
         return pathMatch ? pathMatch[1] : null;
     }).filter(Boolean);
 
-    // Extract file paths from open() calls
-    const openMatches = script?.match(/open\(['"]([^'"]+)['"]/g) || [];
-    const openFiles = openMatches.map(match => {
-        // Extract just the file path from the open call
-        const pathMatch = match.match(/open\(['"]([^'"]+)['"]/);
-        return pathMatch ? pathMatch[1] : null;
-    }).filter(Boolean);
-
-    // Combine both sets of files
-    const filesToDownload = [...new Set([...csvFiles, ...openFiles])];
+    // Remove duplicates
+    const filesToDownload = [...new Set(filePaths)];
 
     console.log(`Files to download: ${JSON.stringify(filesToDownload)}`);
     return `
 files_to_download = ${JSON.stringify(filesToDownload)}
 
-# Download any files that are referenced in pd.read_csv or open() calls
+# Download any files that are referenced in the code
 for s3_path in files_to_download:
     downloadFileFromS3(s3_path)
 \n\n`
 }
 
-export const getPostCodeExecutionScript = () => { return `
+export const getPostCodeExecutionScript = (props?: {origin?: string}) => { 
+    const origin = props?.origin || '';
+    return `
 import os
 
 def upload_working_directory():
@@ -228,6 +224,68 @@ def upload_working_directory():
             if rel_path.startswith('global'):
                 continue
             
+            # If the file is an html file, open the file, and replace any src attributes with reletive paths with the full path, including the origin.
+            if local_path.lower().endswith('.html'):
+                try:
+                    with open(local_path, 'r', encoding='utf-8') as f:
+                        content = f.read()
+                    
+                    # Check if Plotly script is already present
+                    plotly_script = '<script src="https://cdn.plot.ly/plotly-latest.min.js"></script>'
+                    if plotly_script not in content:
+                        # Add Plotly script before the closing head tag, or at the start of the body if no head tag
+                        if '</head>' in content:
+                            content = content.replace('</head>', f'''{plotly_script}\n</head>''')
+                        elif '<body>' in content:
+                            content = content.replace('<body>', f'''<body>\n{plotly_script}''')
+                        else:
+                            # If neither head nor body tag exists, add it at the start of the file
+                            content = f'''{plotly_script}\n{content}'''
+                    
+                    # Function to process a path and return the full URL
+                    def get_full_url(file_path):
+                        # Only process relative paths that don't start with http/https/files
+                        if file_path.startswith(('http://', 'https://')):
+                            return file_path
+                        
+                        # Handle global files differently
+                        if file_path.startswith('global/'):
+                            return f"${origin}/file/{file_path}"
+                        
+                        # Construct the full asset path for session-specific files
+                        return f"${origin}/file/{chatSessionS3Prefix}{file_path}"
+                    
+                    import re
+                    
+                    # Regular expression to match href="path/to/file" patterns
+                    link_regex = r'href="([^"]+)"'
+                    # Regular expression to match src="path/to/file" patterns in iframes
+                    iframe_src_regex = r'<iframe[^>]*\ssrc="([^"]+)"[^>]*>'
+                    
+                    # First replace all href matches
+                    def replace_href(match):
+                        file_path = match.group(1)
+                        full_path = get_full_url(file_path)
+                        return f'href="{full_path}"'
+                    
+                    content = re.sub(link_regex, replace_href, content)
+                    
+                    # Then replace all iframe src matches
+                    def replace_src(match):
+                        full_match = match.group(0)
+                        file_path = re.search(r'src="([^"]+)"', full_match).group(1)
+                        full_path = get_full_url(file_path)
+                        return full_match.replace(f'src="{file_path}"', f'src="{full_path}"')
+                    
+                    content = re.sub(iframe_src_regex, replace_src, content)
+                    
+                    # Write the processed content back to the file
+                    with open(local_path, 'w', encoding='utf-8') as f:
+                        f.write(content)
+                    
+                except Exception as e:
+                    print(f"Error processing HTML links in {local_path}: {str(e)}")
+
             # Upload the file to S3 preserving the directory structure
             print(f"Uploading {local_path} to S3...")
             uploadFileToS3(local_path, rel_path)
@@ -521,7 +579,7 @@ async function findExistingSession(athenaClient: AthenaClient, chatSessionId: st
         console.log(`Looking for existing session for chat session: ${chatSessionId}`);
 
         const listSessionsCommand = new ListSessionsCommand({
-            WorkGroup: ATHENA_WORKGROUP,
+            WorkGroup: getAthenaWorkgroup(),
             // Only look for recent sessions that might be active
             StateFilter: 'IDLE'
         });
@@ -601,7 +659,7 @@ export const pysparkTool = (props: {additionalSetupScript?: string, additionalTo
             // Save the script file
             if (code && scriptPath) {
                 // Save the code to a file
-                codeToExecute = getPreCodeExecutionScript(code) + code + getPostCodeExecutionScript();
+                codeToExecute = getPreCodeExecutionScript(code) + code + getPostCodeExecutionScript({origin: getOrigin() || ''});
                 await writeFile.invoke({
                     filename: scriptPath,
                     content: getSessionSetupScript() + additionalSetupScript + '\n' + codeToExecute
@@ -609,7 +667,7 @@ export const pysparkTool = (props: {additionalSetupScript?: string, additionalTo
                 console.log(`Saved code to file: ${scriptPath}`);
             } else {
                 // Load the code from a file
-                const scriptContent = await readS3File(scriptPath);
+                const scriptContent = await readS3File(`s3://${process.env.STORAGE_BUCKET_NAME}/${getChatSessionPrefix()}${scriptPath}`);
                 codeToExecute =  getPreCodeExecutionScript(scriptContent) + scriptContent; //Saved scripts will always have the post execution script
                 console.log(`Loaded code from file: ${scriptPath}`);
             }
@@ -655,15 +713,21 @@ export const pysparkTool = (props: {additionalSetupScript?: string, additionalTo
                 console.log('New session token: ', sessionToken);
 
                 const startSessionCommand = new StartSessionCommand({
-                    WorkGroup: ATHENA_WORKGROUP,
+                    WorkGroup: getAthenaWorkgroup(),
                     Description: `Session for ${description} [ChatSessionID:${chatSessionId}]`,
                     ClientRequestToken: sessionToken,
                     EngineConfiguration: {
-                        MaxConcurrentDpus: 20
+                        MaxConcurrentDpus: 20,
+                        SparkProperties: {
+                            "spark.sql.catalog.spark_catalog": "org.apache.iceberg.spark.SparkSessionCatalog",
+                            "spark.sql.catalog.spark_catalog.catalog-impl": "org.apache.iceberg.aws.glue.GlueCatalog",
+                            "spark.sql.catalog.spark_catalog.io-impl": "org.apache.iceberg.aws.s3.S3FileIO",
+                            "spark.sql.extensions": "org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions"
+                        }
                     }
                 });
 
-                console.log(`Starting Athena session in workgroup: ${ATHENA_WORKGROUP}`);
+                console.log(`Starting Athena session in workgroup: ${getAthenaWorkgroup()}`);
                 const sessionResponse = await athenaClient.send(startSessionCommand);
 
                 if (!sessionResponse.SessionId) {
@@ -840,6 +904,8 @@ execute the provided PySpark code, and return the execution results.
 
 Important notes:
 - When fitting curves, ALWAYS check the curve fit quality!
+- The function downloadFileFromS3 is already defined in the execution environment. ALWAYS use it to load files into the execution environment.
+    * Ex: downloadFileFromS3('relative/path/to/file.csv');
 - Before loading a csv file from S3, read the file to check the column names and data types.
 - Any files saved to the working directory will be uploaded to the user's chat session's artifacts in S3.
 - The file hiearchy will be perserved when uploading files from the working directory to S3 (ex: data/dataframe.csv will be uploaded as data/dataframe.csv in the chat session's S3 prefix).
@@ -848,6 +914,7 @@ Important notes:
 - Perfer saving dfs with pandas instead of with spark.
 - If you need to load a csv file from S3, use the pd.read_csv function.
 - The 'spark' session is already initialized in the execution environment
+- NEVER modify the spark configuration. It is already set up for you.
 - You don't need to import SparkSession or create a new session
 - The STDOUT and STDERR are captured and returned in the response
 - The execution results will be returned directly in the response

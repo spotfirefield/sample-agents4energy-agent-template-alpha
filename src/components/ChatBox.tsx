@@ -268,9 +268,9 @@ const ChatBox = (params: {
             // 1. It has a valid createdAt timestamp
             // 2. It was created before the message we're regenerating
             // 3. Its ID is not in the set of messages to delete
-            msg.createdAt && 
-            messageToRegenerate.createdAt && 
-            msg.createdAt < messageToRegenerate.createdAt && 
+            // msg.createdAt && 
+            // messageToRegenerate.createdAt && 
+            // msg.createdAt < messageToRegenerate.createdAt && 
             typeof msg.id === 'string' && 
             !messageIdsToDelete.has(msg.id)
           )
@@ -398,27 +398,45 @@ const ChatBox = (params: {
             <KeyboardArrowDownIcon />
           </Fab>
         )}
-        <TextField
-          fullWidth
-          multiline
+        <Paper
           variant="outlined"
-          placeholder="Type a message..."
-          value={userInput}
-          onChange={(e) => setUserInput(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
-              handleSend(userInput);
-            }
-          }}
-          disabled={isLoading}
           sx={{
-            position: 'relative', 
+            position: 'relative',
             zIndex: 1400,
-            '& .MuiInputBase-root': {
-              backgroundColor: 'white'
-            }
+            backgroundColor: 'white',
           }}
-        />
+        >
+          <TextField
+            fullWidth
+            multiline
+            variant="standard"
+            placeholder="Type a message..."
+            value={userInput}
+            onChange={(e) => setUserInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                handleSend(userInput);
+              }
+            }}
+            disabled={isLoading}
+            sx={{
+              '& .MuiInputBase-root': {
+                maxHeight: '200px',
+                overflowY: 'auto',
+                alignItems: 'flex-start',
+                padding: '8px 14px',
+                '&:before, &:after': {
+                  display: 'none'
+                }
+              },
+              '& .MuiInputBase-input': {
+                maxHeight: 'none',
+                margin: 0,
+                padding: 0
+              }
+            }}
+          />
+        </Paper>
         <Button 
           variant="contained" 
           color={isLoading ? "secondary" : "primary"} 
