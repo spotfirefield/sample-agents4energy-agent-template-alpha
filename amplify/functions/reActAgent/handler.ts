@@ -3,7 +3,7 @@ import { stringify } from "yaml";
 import { getConfiguredAmplifyClient } from '../../../utils/amplifyUtils';
 
 import { ChatBedrockConverse } from "@langchain/aws";
-import { HumanMessage, ToolMessage, BaseMessage, SystemMessage, AIMessageChunk } from "@langchain/core/messages";
+import { HumanMessage, ToolMessage, BaseMessage, SystemMessage, AIMessageChunk, AIMessage } from "@langchain/core/messages";
 import { createReactAgent } from "@langchain/langgraph/prebuilt";
 import { Calculator } from "@langchain/community/tools/calculator";
 import { DuckDuckGoSearch } from "@langchain/community/tools/duckduckgo_search";
@@ -38,18 +38,20 @@ export const handler: Schema["invokeReActAgent"]["functionHandler"] = async (eve
     const foundationModelId = event.arguments.foundationModelId || process.env.AGENT_MODEL_ID
     if (!foundationModelId) throw new Error("AGENT_MODEL_ID is not set");
 
+    const userId = event.arguments.userId || (event.identity && 'sub' in event.identity ? event.identity.sub : null);
+    if (!userId) throw new Error("userId is required");
+
+    const origin = event.arguments.origin || (event.request?.headers?.origin || null);
+    if (!origin) throw new Error("origin is required");
+    console.log('origin:', origin);
     try {
         if (event.arguments.chatSessionId === null) throw new Error("chatSessionId is required");
-        if (!event.identity) throw new Error("Event does not contain identity");
-        if (!('sub' in event.identity)) throw new Error("Event does not contain user");
 
         // Set the chat session ID for use by the S3 tools
         setChatSessionId(event.arguments.chatSessionId);
 
-        // Set the origin from the request headers
-        if (event.request?.headers?.origin) {
-            setOrigin(event.request.headers.origin);
-        }
+        // Set the origin from the event arguments or request headers
+        setOrigin(origin);
 
         // Define the S3 prefix for this chat session (needed for env vars)
         const bucketName = process.env.STORAGE_BUCKET_NAME;
@@ -60,6 +62,8 @@ export const handler: Schema["invokeReActAgent"]["functionHandler"] = async (eve
         // This function includes validation to prevent "The text field in the ContentBlock object is blank" errors
         // by ensuring no message content is empty when sent to Bedrock
         const chatSessionMessages = await getLangChainChatMessagesStartingWithHumanMessage(event.arguments.chatSessionId)
+
+       
 
         const agentModel = new ChatBedrockConverse({
             model: process.env.AGENT_MODEL_ID,
@@ -96,12 +100,7 @@ custom_layout = go.Layout(
 custom_template = go.layout.Template(layout=custom_layout)
 pio.templates["white_clean_log"] = custom_template
 pio.templates.default = "white_clean_log"
-                `,
-                additionalToolDescription: `
-                When fitting a hyperbolic decline curve to well production data:
-                - You MUST weight the most recent points more x20 more heavily when fitting the curve.
-                - Filter out any points that do not reflect the well's production decline, such as sudden drop offs or spikes.
-            `}),
+                `,}),
             ...s3FileManagementTools,
             renderAssetTool
         ]
@@ -110,6 +109,40 @@ pio.templates.default = "white_clean_log"
             llm: agentModel,
             tools: agentTools,
         });
+
+         // If the last message is an assistant message with a tool call, call the tool with the arguments
+         if (
+            chatSessionMessages.length > 0 && 
+            chatSessionMessages[chatSessionMessages.length - 1] instanceof AIMessage && 
+            (chatSessionMessages[chatSessionMessages.length - 1] as AIMessage).tool_calls
+        ) {
+            console.log('Chat messages end with a tool call but no tool response. Invoking tool...')
+            const toolCall = (chatSessionMessages[chatSessionMessages.length - 1] as AIMessage).tool_calls![0]
+            const toolName = toolCall.name
+            const toolArgs = toolCall.args
+            const selectedTool = agentTools.find(tool => tool.name === toolName)
+            if (selectedTool) {
+                try {
+                    const toolResult = await selectedTool.invoke(toolArgs as any)
+                    console.log('toolResult:\n', JSON.stringify(toolResult, null, 2))
+                    const toolMessage = new ToolMessage({
+                        content: JSON.stringify(toolResult),
+                        name: toolName,
+                        tool_call_id: toolCall.id!
+                    })
+                    chatSessionMessages.push(toolMessage)
+                    await publishMessage({
+                        chatSessionId: event.arguments.chatSessionId,
+                        fieldName: graphQLFieldName,
+                        owner: userId,
+                        message: toolMessage
+                    })
+                } catch (error) {
+                    console.error('Tool invocation error:', error)
+                    throw error
+                }
+            }
+        }
 
         
         let systemMessageContent = `
@@ -160,10 +193,7 @@ When generating a csv file, use the pysparkTool to generate the file and not the
             - Ownership transfers
             - Other legal/administrative changes that do not affect well operations
 
-2. Analize the production numbers:
-    - If there is a sudden drop in production, determine the cause of the drop.
-    - Recommend a new well configureation (including artificail lift type and tubing depth) to improve production.
-
+2. Analyze the well events and production data to determine the cause of the production drop.
 3. Generate a procedure to repair the well.
     - Use the well file information table to determine the tubing depth and artificial lift type.
     - Don't use rows with the administrative event type for artificial lift type.
@@ -195,38 +225,9 @@ When generating a csv file, use the pysparkTool to generate the file and not the
             - Low solids content in produced fluids
         - Artificial Lift Not Recommended:
             - Well flows naturally with no artificial lift
-            
-4. Decline Curve Analysis:
-    - ALWAYS include units on rates (ex: MCF/Month)
-    - Use hyperbolic decline model and the bounds: 
-        - Initial production rate (qi): 
-            * Lower bound: 0
-            * Upper bound: 2 * maximum observed monthly production
-        - Decline rate (di): 
-            * Lower bound: 0
-            * Upper bound: 1.0
-        - Decline exponent (b): 
-            * Lower bound: 0
-            * Upper bound: 2.0
-    - Weighted fitting favoring recent data points
-    - Remove statistical outliers before curve fitting
-    - Validate model by extending curve into historic production
-    - Generate a plot of the decline curve (Gas (red), Oil (green), Water (blue)) with a logarithmic scale
-    - Include operational events on the plot as data points at the max production rate with tooltips showing the event details.
-
-5. Economic Analysis:
-    - Use the pysparkTool to calculate the net present value (NPV) of the project by discounting future cash flows and subtracting the initial investment
-    - Calculate future production rates using the decline curve model from the decline curve analysis
-    - Use a 10% cash flow discount rate
-    - Operational expenses: $50,000/year/well
-    - Gas price: $3/MCF
-    - Economic analysis starts the year after last known production
-    - Economic Limit Production Rate = ( Annual Operating Cost) / 365 / (Oil Price / BBL)
-    - Economic Life = log(Economic Limit Rate / Current Production Rate) / log(1 - Annual Decline Rate)
-    - NPV = Σ [Qt * P * (1 / (1 + r)^t) - Ct]
-    - Print the financial metrics to the console
-
-6. Report Structure:
+      
+4. Estimate the cost of repairing the well.
+5. Report Structure:
    a) Executive Summary
       - Recommended action (Repair/Do Not Repair)
       - NPV10 calculation (If the pysparkTool response didn't print this output, look for an economic analysis file and read it with the readFile tool)
@@ -301,10 +302,6 @@ When using the file management tools:
 - Global files are shared across sessions and are read-only
 - When saving reports to file, use the writeFile tool with html formatting
 
-When using the PySpark tool:
-- After fitting a curve, ALWAYS check the residuals to ensure the fit is good. 
-- If the residuals are not normally distributed, try a different model or transformation.
-
 When using the textToTableTool:
 - IMPORTANT: For simple file searches, just use the identifying text (e.g., "15_9_19_A") as the pattern
 - IMPORTANT: Don't use this file on structured data like csv files. Use the pysparkTool instead.
@@ -327,9 +324,6 @@ When using the textToTableTool:
                     content: systemMessageContent
                 }),
                 ...chatSessionMessages,
-                // new HumanMessage({
-                //     content: event.arguments.userInput || " " // Ensure user input is never empty
-                // })
             ].filter((message): message is BaseMessage => message !== undefined)
         }
 
@@ -422,7 +416,7 @@ When using the textToTableTool:
                                 await publishMessage({
                                     chatSessionId: event.arguments.chatSessionId,
                                     fieldName: graphQLFieldName,
-                                    owner: event.identity.sub,
+                                    owner: userId,
                                     message: streamChunk
                                 })
                                 break;
@@ -446,16 +440,17 @@ When using the textToTableTool:
         }
 
     } catch (error) {
-        if (!event.identity) throw new Error("Event does not contain identity");
-        if (!('sub' in event.identity)) throw new Error("Event does not contain user");
-
         const amplifyClient = getConfiguredAmplifyClient();
 
         console.warn("Error responding to user:", JSON.stringify(error, null, 2));
+        
+        // Send the complete error message to the client
+        const errorMessage = error instanceof Error ? error.stack || error.message : String(error);
+
         const publishChunkResponse = await amplifyClient.graphql({
             query: publishResponseStreamChunk,
             variables: {
-                chunkText: "Error responding to user: " + JSON.stringify(error, null, 2),
+                chunkText: errorMessage,
                 index: 0,
                 chatSessionId: event.arguments.chatSessionId
             }
