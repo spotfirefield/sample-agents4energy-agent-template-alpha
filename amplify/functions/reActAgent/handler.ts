@@ -76,7 +76,29 @@ export const handler: Schema["invokeReActAgent"]["functionHandler"] = async (eve
                 foundationModelId: foundationModelId
             }),
             pysparkTool({
+                additionalSetupScript: `
+sc.addPyFile("s3://${bucketName}/global/pypi/pypi_libs.zip")
+def dtc2vp(DTC):
+    if DTC == 0:
+        vp = 0
+    elif DTC > 0:
+        vp = 304.8/DTC
+    else:
+        vp = null
+    return vp
+                `,
                 additionalToolDescription: `
+las = lasio.read("local_file.las")
+for item in las.well:
+    print(f"{item.descr} ({item.mnemonic}): {item.value}")
+for count, curve in enumerate(las.curves):
+    print(f"Curve: {curve.mnemonic}, Units: {curve.unit}, Description: {curve.descr}")
+print(f"There are a total of: {count+1} curves present within this file")
+well = las.df()
+
+the function dtc2vp has already been defined in this execution environment
+
+
                 When fitting a hyperbolic decline curve to well production data:
                 - You MUST weight the most recent points more x20 more heavily when fitting the curve.
                 - Filter out any points that do not reflect the well's production decline, such as sudden drop offs or spikes.
@@ -108,6 +130,7 @@ When creating plots:
 - If a table has already been generated, reuse that data instead of regenerating it
 - Only generate new data tables if no existing relevant data is available
 - When asked to plot data from a table, look for the specific table mentioned and use that data
+- When asked to plot well log curves, use matplotlib
 
 When creating reports:
 - Start the report with a summary which includes:
