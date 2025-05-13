@@ -152,7 +152,7 @@ Today's date is ${new Date().toLocaleDateString()}.
 
 List the files in the global/notes directory for guidance on how to respond to the user.
 Create intermediate files to store your planned actions, thoughts and work. Use the writeFile tool to create these files. 
-Store them in the 'intermediateFiles' directory. After you complete a planned step, record the results in the file.
+Store them in the 'intermediate' directory. After you complete a planned step, record the results in the file.
 
 When generating a csv file, use the pysparkTool to generate the file and not the writeFile tool.
 
@@ -237,6 +237,9 @@ When generating a csv file, use the pysparkTool to generate the file and not the
         - Ex: <iframe src="plots/production_and_decline_curve_plot.html" width="100%" height="500px" frameborder="0"></iframe>
       - Repair cost breakdown
    c) Technical Assessment
+      - Operational events table:
+        - If the textToTable tool returned a link to a table of operational events, include in ifram which links to it.
+        - If not, create a table with operational events.
       - Current well condition and artificial lift type
       - Summary of the proposed procedure
       - Link to the proposed repair procedure (ex: <a href="reports/repair_procedure.md">Proposed Repair Procedure</a>)
