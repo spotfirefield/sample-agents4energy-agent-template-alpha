@@ -18,8 +18,8 @@ import { invokeReActAgent, listChatMessageByChatSessionIdAndCreatedAt } from "..
 import * as APITypes from "../amplify/functions/graphql/API";
 import { readFile } from "../amplify/functions/tools/s3ToolBox";
 
-const START_INDEX = 0
-const END_INDEX = 10000
+const START_INDEX = 62
+const END_INDEX = 200
 
 const LOCAL_ORIGIN = 'http://localhost:3001'
 
@@ -59,6 +59,7 @@ interface EconomicParameters {
 interface WellParameters {
     decline_curve_parameters: DeclineCurveParameters;
     economic_parameters: EconomicParameters;
+    no_fit?: Boolean
 }
 
 // Helper function to format numbers with commas
@@ -126,14 +127,19 @@ const main = async () => {
     const highDropWells = records.filter(record => parseFloat(record.rate_drop_MCFD) > 50);
     console.log(`Found ${highDropWells.length} wells with rate drop > 50`);
 
+    let i = 0
     // Process each well
     for await (const [index, well] of highDropWells.entries()) {
+        i++
         //for testing, only process the first x wells
-        if (index < START_INDEX) continue
-        if (index > END_INDEX) {
+        if (i < START_INDEX) continue
+        if (i > END_INDEX) {
             break;
         }
-        if (well.api != '3003924224') continue //Select a specific well
+        if (well.pool.includes("MANCOS")) continue
+        // if (well.api != '3003924224') continue //Select a specific well
+
+        console.log('#'.repeat(20),`\nProcessing well ${well.api}, index ${i}`)
 
         console.log('#'.repeat(20),`\nProcessing well ${well.api}, index ${index}`)
 
@@ -201,6 +207,8 @@ pio.templates.default = "white_clean_log"
         console.log('Well parameters file: ', wellParametersFile);
 
         const wellParameters: WellParameters = JSON.parse(wellParametersFile.content);
+
+        if (wellParameters.no_fit) continue
 
         // console.log('Well parameters: ', wellParameters);
 
