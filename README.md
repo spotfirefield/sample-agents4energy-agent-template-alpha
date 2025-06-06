@@ -27,53 +27,11 @@ npm run dev
 
 5. Open your browser to the local URL (ex: localhost:3000)
 
-The interactive environment includes:
-- TypeScript/JavaScript support
-- AWS Amplify CLI pre-installed
-- LangGraph dependencies configured
-- Live preview of UI components
-- Integrated terminal
-- Real-time collaboration support
+6. Create an account by clicking the "Login" button.
 
-## Prerequisites
-
-Before starting this workshop, you'll need:
-
-- An AWS Account with appropriate permissions
-- Node.js 18.x or later
-- Python 3.9 or later
-- AWS CLI configured locally
-- AWS Amplify CLI installed (`npm install -g @aws-amplify/cli`)
-- Basic understanding of React and Python
-
-## Workshop Labs
+7. Create a new chat session by clicking the "Create" button, and try out (or modify) one of the sample prompts.
 
 
-### Lab 1: Interact with the Agent in the Browser
-- Try modifying one of the example prompts to fit a problem in your business
-- Become conformtable with how the agent can create plots and reports
-
-### Lab 2: Creating Custom Tools for the Agent
-- Understanding the LangGraph tool architecture
-- Add custom buisness logic to a agentic tool call
-
-### Lab 3: Rendering Custom UI Elements 
-- Creating React components for agent interaction
-- Building tool response visualizations
-
-### Lab 4: Persisting Agent State with AWS Amplify
-- Setting up DynamoDB through Amplify
-- Designing the state persistence schema
-- Implementing state storage and retrieval
-- Managing agent memory across sessions
-
-## Getting Started
-
-To begin the workshop:
-
-1. Clone this repository
-2. Navigate to Lab 1 in the `labs/lab1` directory
-3. Follow the step-by-step instructions in each lab's README
 
 ## Security
 
