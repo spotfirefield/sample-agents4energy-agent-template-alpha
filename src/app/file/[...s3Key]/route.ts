@@ -4,13 +4,12 @@ import { getUrl } from 'aws-amplify/storage';
 import { Amplify } from 'aws-amplify';
 
 interface PageProps {
-  params: Promise<{
+  params: {
     s3Key: string[];
-  }>;
+  };
 }
 
-export async function GET(request: Request, props: PageProps) {
-  const params = await props.params;
+export async function GET(request: Request, { params }: PageProps) {
   try {
     const s3Key = params.s3Key.join('/');
     const s3KeyDecoded = s3Key.split('/').map((item: string) => decodeURIComponent(item)).join('/');

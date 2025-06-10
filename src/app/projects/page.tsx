@@ -544,8 +544,7 @@ const Page = () => {
                                     <Typography variant="body1" sx={{ mt: 1 }}>
                                         <strong>Success Probability:</strong> {formatPercentage(selectedProject.financial?.successProbability)}
                                     </Typography>
-                                    {/* <Typography variant="body1" sx={{ mt: 1 }}> */}
-                                    <Box marginTop='10px'>
+                                    <Typography variant="body1" sx={{ mt: 1 }}>
                                         <strong>Status: </strong>
                                         <Box
                                             onClick={handleStatusClick}
@@ -600,8 +599,7 @@ const Page = () => {
                                                 </MenuItem>
                                             ))}
                                         </Menu>
-                                    {/* </Typography> */}
-                                    </Box>
+                                    </Typography>
                                     <Typography variant="body1" sx={{ mt: 1 }}>
                                         <strong>Creation Date:</strong> {formatDate(selectedProject.createdAt)}
                                     </Typography>
