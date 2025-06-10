@@ -1,8 +1,17 @@
-# Building AI Agents with LangGraph and AWS Amplify
+# Agents for Energy - Agent Template Alpha - Building AI Agents with LangGraph and AWS Amplify
 
-This workshop teaches you how to build, deploy, and manage AI agents using LangGraph and AWS Amplify. You'll learn how to persist agent state, create custom tools, build interactive UIs, and deploy agents to AWS Lambda.
+This project shows an example implimenation of hosting a [LangGraph agent](https://www.langchain.com/langgraph) in an AWS Lambda function to process digital operations related energy woakloads. There are a series of [labs](/labs/labs.md) which walk through the process of extending the agent to address a new use case. You'll learn how to persist agent state, create custom tools, build interactive UIs, and deploy agents with AWS Amplify.
 
-## Launch the Interactive Environment
+## Deploy the Project with AWS Amplify
+This option will create a public facing URL which let's users interact with your application.
+
+1. Fork this repository in your company's Github account.
+
+2. Follow the steps in [this tutorial](https://docs.aws.amazon.com/amplify/latest/userguide/getting-started-next.html) to deploy the forked repository with AWS Amplify.
+
+
+## Deploy the Development Environment
+This option let's you rapidly deploy changes to the code repository, so you can quickly add new features.
 
 1. Clone this repository:
 ```bash
