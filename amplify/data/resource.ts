@@ -1,17 +1,4 @@
 import { type ClientSchema, a, defineData, defineFunction } from '@aws-amplify/backend';
-// import { GardenUnits } from '../functions/graphql/API';
-// import { createZodSchema } from './amplifyToZod'
-
-// export const generateGardenPlanStepsFunction = defineFunction({
-//   name: 'generateGardenPlanSteps',
-//   entry: '../functions/generateGardenPlanStepsHandler.ts',
-//   timeoutSeconds: 900,
-//   environment: {
-//     MODEL_ID: 'us.anthropic.claude-3-5-sonnet-20241022-v2:0'
-//     // MODEL_ID: 'us.anthropic.claude-3-sonnet-20240229-v1:0',
-//     // MODEL_ID: 'us.amazon.nova-pro-v1:0'
-//   }
-// });
 
 export const reActAgentFunction = defineFunction({
   name: 'reActAgent',
@@ -40,12 +27,12 @@ export const schema = a.schema({
     reportS3Path: a.string().required(),
     sourceChatSessionId: a.id(),
     financial: a.customType({
-      discountedRevenue: a.float(),
+      revenuePresentValue: a.float(),
       cost: a.float(),
       NPV10: a.float(),
       successProbability: a.float(),
       incrimentalGasRateMCFD: a.float(),
-      incirmentalOilRateBOPD: a.float(),
+      incrimentalOilRateBOPD: a.float(),
     }),
     foundationModelId: a.string(),
     nextAction: a.customType({
@@ -53,7 +40,7 @@ export const schema = a.schema({
       buttonTextAfterClick: a.string(),
     })
   })
-    .authorization((allow) => [allow.owner(), allow.authenticated()]),
+    .authorization((allow) => [allow.owner(), allow.authenticated(), allow.guest()]),
 
   WorkStep: a.customType({
     name: a.string(),
@@ -67,7 +54,7 @@ export const schema = a.schema({
     messages: a.hasMany("ChatMessage", "chatSessionId"),
     workSteps: a.ref("WorkStep").array(),
   })
-    .authorization((allow) => [allow.owner(), allow.authenticated()]),
+    .authorization((allow) => [allow.owner(), allow.authenticated(), allow.guest()]),
 
   ChatMessage: a
     .model({
@@ -95,7 +82,7 @@ export const schema = a.schema({
       index("chatSessionId").sortKeys(["createdAt"]),
       index("chatSessionIdUnderscoreFieldName").sortKeys(["createdAt"])
     ])
-    .authorization((allow) => [allow.owner(), allow.authenticated()]),
+    .authorization((allow) => [allow.owner(), allow.authenticated(), allow.guest()]),
 
   //These assets enable token level streaming from the model
   ResponseStreamChunk: a.customType({
@@ -132,6 +119,8 @@ export const schema = a.schema({
       chatSessionId: a.id().required(), 
       foundationModelId: a.string(), // Optionally, chose the foundation model to use for the agent
       respondToAgent: a.boolean(), //When an agent is invoked by another agent, the agent will create a tool response message with it's output
+      userId: a.string(), //When invoking the agent programatically, specify which user should be the owner of the message
+      origin: a.string(), //When invoking the agent programatically, specify the host origin for serving files
     })
     .handler(a.handler.function(reActAgentFunction).async())
     .authorization((allow) => [allow.authenticated()]),

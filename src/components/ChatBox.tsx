@@ -41,7 +41,9 @@ const DefaultPrompts = ({ onSelectPrompt }: { onSelectPrompt: (prompt: string) =
 
 const ChatBox = (params: {
   chatSessionId: string,
+  showChainOfThought: boolean
 }) => {
+  const {chatSessionId, showChainOfThought} = params
 
   const [messages, setMessages] = useState<Message[]>([]);
   const [, setResponseStreamChunks] = useState<(Schema["recieveResponseStreamChunk"]["returnType"] | null)[]>([]);
@@ -55,9 +57,10 @@ const ChatBox = (params: {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const [isScrolledToBottom, setIsScrolledToBottom] = useState(true);
+  // const [showChainOfThought, setShowChainOfThought] = useState(false);
   // const [selectedAgent, setSelectedAgent] = useState<('reActAgent' | 'planAndExecuteAgent' | 'projectGenerationAgent')>("reActAgent");
 
-  //Subscribe to the chat messages for the garden
+  //Subscribe to the chat messages
   useEffect(() => {
     const messageSubscriptionHandler = async () => {
       console.log('Creating message subscription for garden: ', params.chatSessionId)
@@ -73,12 +76,12 @@ const ChatBox = (params: {
             const sortedMessages = combineAndSortMessages(prevMessages, recentMessages)
             if (sortedMessages[sortedMessages.length - 1] && sortedMessages[sortedMessages.length - 1].responseComplete) {
               setIsLoading(false)
+              setStreamChunkMessage(undefined)
+              setResponseStreamChunks([])
             }
             setHasMoreMessages(items.length > messagesPerPage);
             return sortedMessages
-          })
-          setStreamChunkMessage(undefined)
-          setResponseStreamChunks([])
+          })          
         }
       })
 
@@ -166,6 +169,8 @@ const ChatBox = (params: {
         next: (newChunk) => {
           // console.log('Received new response stream chunk: ', newChunk)
           setResponseStreamChunks((prevChunks) => {
+            if (newChunk.index === 0) return [newChunk] //If this is the first chunk, reset the preChunk array
+
             //Now Insert the new chunk into the correct position in the array
             if (newChunk.index >= 0 && newChunk.index < prevChunks.length) {
               prevChunks[newChunk.index] = newChunk;
@@ -181,7 +186,7 @@ const ChatBox = (params: {
             if (prevChunks[0] || true) {
               setStreamChunkMessage({
                 id: 'streamChunkMessage',
-                role: 'ai',
+                role: 'ai-stream',
                 content: {
                   text: prevChunks.map((chunk) => chunk?.chunkText).join("")
                 },
@@ -270,9 +275,9 @@ const ChatBox = (params: {
             // 3. Its ID is not in the set of messages to delete
             msg.createdAt && 
             messageToRegenerate.createdAt && 
-            msg.createdAt < messageToRegenerate.createdAt && 
-            typeof msg.id === 'string' && 
-            !messageIdsToDelete.has(msg.id)
+            msg.createdAt < messageToRegenerate.createdAt // && 
+            // typeof msg.id === 'string' && 
+            // !messageIdsToDelete.has(msg.id)
           )
         );
         
@@ -314,16 +319,10 @@ const ChatBox = (params: {
         chatSessionId: params.chatSessionId
       }
 
-      const { newMessageData } = await sendMessage({
+      await sendMessage({
         chatSessionId: params.chatSessionId,
         newMessage: newMessage
       })
-
-      if (newMessageData) setMessages([...messages, {
-        ...newMessage,
-        id: newMessageData.id,
-        createdAt: newMessageData.createdAt
-      }]);
 
       setUserInput('');
     }
@@ -365,7 +364,19 @@ const ChatBox = (params: {
             {[
               ...messages,
               ...(streamChunkMessage ? [streamChunkMessage] : [])
-            ].map((message) => (
+            ]
+            .filter((message) => {
+              if (showChainOfThought) return true
+              switch (message.role) {
+                case 'ai':
+                  return message.responseComplete
+                case 'tool':
+                  return ['renderAssetTool','userInputTool','createProject'].includes(message.toolName!);
+                default:
+                  return true;
+              }
+            })
+            .map((message) => (
               <ListItem key={message.id}>
                 <ChatMessage
                   message={message}
@@ -398,27 +409,45 @@ const ChatBox = (params: {
             <KeyboardArrowDownIcon />
           </Fab>
         )}
-        <TextField
-          fullWidth
-          multiline
+        <Paper
           variant="outlined"
-          placeholder="Type a message..."
-          value={userInput}
-          onChange={(e) => setUserInput(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
-              handleSend(userInput);
-            }
-          }}
-          disabled={isLoading}
           sx={{
-            position: 'relative', 
+            position: 'relative',
             zIndex: 1400,
-            '& .MuiInputBase-root': {
-              backgroundColor: 'white'
-            }
+            backgroundColor: 'white',
           }}
-        />
+        >
+          <TextField
+            fullWidth
+            multiline
+            variant="standard"
+            placeholder="Type a message..."
+            value={userInput}
+            onChange={(e) => setUserInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                handleSend(userInput);
+              }
+            }}
+            disabled={isLoading}
+            sx={{
+              '& .MuiInputBase-root': {
+                maxHeight: '200px',
+                overflowY: 'auto',
+                alignItems: 'flex-start',
+                padding: '8px 14px',
+                '&:before, &:after': {
+                  display: 'none'
+                }
+              },
+              '& .MuiInputBase-input': {
+                maxHeight: 'none',
+                margin: 0,
+                padding: 0
+              }
+            }}
+          />
+        </Paper>
         <Button 
           variant="contained" 
           color={isLoading ? "secondary" : "primary"} 
