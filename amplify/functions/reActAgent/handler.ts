@@ -110,6 +110,125 @@ custom_layout = go.Layout(
 custom_template = go.layout.Template(layout=custom_layout)
 pio.templates["white_clean_log"] = custom_template
 pio.templates.default = "white_clean_log"
+
+# Create a composite well-log plot
+fig, ax = plt.subplots()
+
+#Set up the plot axes
+ax1 = plt.subplot2grid((1,6), (0,0), rowspan=1, colspan = 1)
+ax2 = plt.subplot2grid((1,6), (0,1), rowspan=1, colspan = 1, sharey = ax1)
+ax3 = plt.subplot2grid((1,6), (0,2), rowspan=1, colspan = 1, sharey = ax1)
+ax4 = plt.subplot2grid((1,6), (0,3), rowspan=1, colspan = 1, sharey = ax1)
+ax5 = ax3.twiny() #Twins the y-axis for the density track with the neutron track
+ax6 = plt.subplot2grid((1,6), (0,4), rowspan=1, colspan = 1, sharey = ax1)
+ax7 = ax2.twiny()
+
+# As our curve scales will be detached from the top of the track,
+# this code adds the top border back in without dealing with splines
+ax10 = ax1.twiny()
+ax10.xaxis.set_visible(False)
+ax11 = ax2.twiny()
+ax11.xaxis.set_visible(False)
+ax12 = ax3.twiny()
+ax12.xaxis.set_visible(False)
+ax13 = ax4.twiny()
+ax13.xaxis.set_visible(False)
+ax14 = ax6.twiny()
+ax14.xaxis.set_visible(False)
+
+# Gamma Ray track
+ax1.plot(well["GR"], well.index, color = "green", linewidth = 0.5)
+ax1.set_xlabel("Gamma")
+ax1.xaxis.label.set_color("green")
+ax1.set_xlim(0, 200)
+ax1.set_ylabel("Depth (m)")
+ax1.tick_params(axis='x', colors="green")
+ax1.spines["top"].set_edgecolor("green")
+ax1.title.set_color('green')
+ax1.set_xticks([0, 50, 100, 150, 200])
+
+# Resistivity track
+ax2.plot(well["RDEP"], well.index, color = "red", linewidth = 0.5)
+ax2.set_xlabel("Resistivity - Deep")
+ax2.set_xlim(0.2, 2000)
+ax2.xaxis.label.set_color("red")
+ax2.tick_params(axis='x', colors="red")
+ax2.spines["top"].set_edgecolor("red")
+ax2.set_xticks([0.1, 1, 10, 100, 1000])
+ax2.semilogx()
+
+# Density track
+ax3.plot(well["RHOB"], well.index, color = "red", linewidth = 0.5)
+ax3.set_xlabel("Density")
+ax3.set_xlim(1.95, 2.95)
+ax3.xaxis.label.set_color("red")
+ax3.tick_params(axis='x', colors="red")
+ax3.spines["top"].set_edgecolor("red")
+ax3.set_xticks([1.95, 2.45, 2.95])
+
+# Sonic track
+ax4.plot(well["DTC"], well.index, color = "purple", linewidth = 0.5)
+ax4.set_xlabel("Sonic")
+ax4.set_xlim(140, 40)
+ax4.xaxis.label.set_color("purple")
+ax4.tick_params(axis='x', colors="purple")
+ax4.spines["top"].set_edgecolor("purple")
+
+# Neutron track placed ontop of density track
+ax5.plot(well["NPHI"], well.index, color = "blue", linewidth = 0.5)
+ax5.set_xlabel('Neutron')
+ax5.xaxis.label.set_color("blue")
+ax5.set_xlim(0.45, -0.15)
+ax5.set_ylim(4150, 3500)
+ax5.tick_params(axis='x', colors="blue")
+ax5.spines["top"].set_position(("axes", 1.08))
+ax5.spines["top"].set_visible(True)
+ax5.spines["top"].set_edgecolor("blue")
+ax5.set_xticks([0.45,  0.15, -0.15])
+
+# Caliper track
+ax6.plot(well["CALI"], well.index, color = "black", linewidth = 0.5)
+ax6.set_xlabel("Caliper")
+ax6.set_xlim(6, 16)
+ax6.xaxis.label.set_color("black")
+ax6.tick_params(axis='x', colors="black")
+ax6.spines["top"].set_edgecolor("black")
+#ax6.fill_betweenx(well_nan.index, 8.5, well["CALI"], facecolor='yellow')
+ax6.set_xticks([6,  11, 16])
+
+# Resistivity track - Curve 2
+ax7.plot(well["RMED"], well.index, color = "green", linewidth = 0.5)
+ax7.set_xlabel("Resistivity - Med")
+ax7.set_xlim(0.2, 2000)
+ax7.xaxis.label.set_color("green")
+ax7.spines["top"].set_position(("axes", 1.08))
+ax7.spines["top"].set_visible(True)
+ax7.tick_params(axis='x', colors="green")
+ax7.spines["top"].set_edgecolor("green")
+ax7.set_xticks([0.1, 1, 10, 100, 1000])
+ax7.semilogx()
+
+
+# Common functions for setting up the plot can be extracted into
+# a for loop. This saves repeating code.
+for ax in [ax1, ax2, ax3, ax4, ax6]:
+    ax.set_ylim(3200, 2700)
+    ax.grid(which='major', color='lightgrey', linestyle='-')
+    ax.xaxis.set_ticks_position("top")
+    ax.xaxis.set_label_position("top")
+    ax.spines["top"].set_position(("axes", 1.02))
+    
+    # loop through the formations dictionary and zone colours
+#    for depth, colour in zip(formations.values(), zone_colours):
+        # use the depths and colours to shade across the subplots
+#        ax.axhspan(depth[0], depth[1], color=colour, alpha=0.1)
+    
+    
+for ax in [ax2, ax3, ax4, ax6]:
+    plt.setp(ax.get_yticklabels(), visible = False)
+    
+plt.tight_layout()
+fig.subplots_adjust(wspace = 0.15)
                 `,
                 additionalToolDescription: `
 las = lasio.read("local_file.las")
@@ -312,7 +431,6 @@ When creating plots:
 - If a table has already been generated, reuse that data instead of regenerating it
 - Only generate new data tables if no existing relevant data is available
 - When asked to plot data from a table, look for the specific table mentioned and use that data
-- When asked to plot well log curves, use matplotlib
 
 When creating reports:
 - Use iframes to display plots or graphics
@@ -348,6 +466,44 @@ When using the textToTableTool:
 - Results are automatically sorted by date if available (chronological order)
 - Use dataToInclude/dataToExclude to prioritize certain types of information
 - When reading well reports, always include a column for a description of the well event
+
+<Formation Evaluation Guidelines>
+1. Look for Gamma Ray, Density and Resistivity log in the las file.
+2. Calculate Vshale (Vsh) by normalizing Gamma ray log.
+3. Calculate porosity (phid) from density log. Use grain density = 2.7; fluid density = 1.
+4. Calculate water saturation (sw) using Archie'e equation. Use a = 1, m=2, n=2.
+5. Intervals that have vsh<0.4 and phid > 0.1 and sw < 0.3 are designated as intervals with good hydrocarbon potential.
+
+</Formation Evaluation Guidelines>
+
+When creating plots:
+- ALWAYS use matplotlib to create plots
+- ALWAYS put logs in their individual tracks. 
+- ALWAYS put resistivity on logarithmic scale.
+- ALWAYS check for and use existing files and data tables before generating new ones
+- If a table has already been generated, reuse that data instead of regenerating it
+- Only generate new data tables if no existing relevant data is available
+- When asked to plot data from a table, look for the specific table mentioned and use that data
+
+When creating reports:
+- Use iframes to display plots or graphics
+- Use the writeFile tool to create the first draft of the report file
+- Use html formatting for the report
+- Put reports in the 'reports' directory
+- IMPORTANT: When referencing files in HTML (links or iframes):
+  * Always use paths relative to the workspace root (no ../ needed)
+  * For plots: use "plots/filename.html"
+  * For reports: use "reports/filename.html"
+  * For data files: use "data/filename.csv"
+  * Example iframe: <iframe src="plots/well_production_plot.html" width="100%" height="500px" frameborder="0"></iframe>
+  * Example link: <a href="data/production_data.csv">Download Data</a>
+
+When using the file management tools:
+- The listFiles tool returns separate 'directories' and 'files' fields to clearly distinguish between them
+- To access a directory, include the trailing slash in the path or use the directory name
+- To read a file, use the readFile tool with the complete path including the filename
+- Global files are shared across sessions and are read-only
+- When saving reports to file, use the writeFile tool with html formatting
         `//.replace(/^\s+/gm, '') //This trims the whitespace from the beginning of each line
 
         const input = {
