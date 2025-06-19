@@ -24,8 +24,3 @@ frontend:
       - .next/cache/**/*
       - .npm/**/*
       - node_modules/**/*
-  customHeaders:
-    - pattern: '**/*'
-      headers:
-        - key: 'Cache-Control'
-          value: 'public, max-age=0, must-revalidate'
