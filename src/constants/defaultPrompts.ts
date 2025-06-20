@@ -1,19 +1,14 @@
 export const defaultPrompts = [
-    `I manage a fleet of wind farms and want to maximize energy production while minimizing operational expense. 
-Let me check our fleet performance for this quarter. Compare the actual production to the forecasted production for each wind farm.
-Generate the necessary time series data to create a dashboard to visualize the performance of each wind farm.`,
-    `Create a demo to optimize the maintenance schedule for a fleet of wellsite compressors in the San Juan basin.
-Generate non-optimized data with historic maintenance events, compressor failures, and time series compressor data.
-Analyze the data to find an optimized maintenance plan and estimate the cost savings.
-Create a comprehensive report and render it for visualization.`,
-    `I compare completion designs and oil production data for an upstream oil company.
-Generate 10,000 well fracturing completion designs (well spacing, lateral length, perforation cluster spacing, pumped water volumes, pumped proppand sand lbs, number of frac'ing stages)
-Generate production data for these wells. There should be a relationship between the completion design and production numbers. The production should loosely follow a hyperbolic decline and have some noise.
-After generating the data, perform an analysis to determine optimal completion design parameters to maximize production.
-Create a comprehensive report and render it for visualization. 
-    `,
-    `Create a demo for analyzing, reporting, and recommending actions based on smart home electricity and water meters.
-Generate time series sensor data. Look for anomalies in the data (including leak events) and opportunities to increase energy effeciency.
-Create a report with an analysis of the data, with recommendations for how to optimize resources usage, including financial metrics.
+    `Using the available LAS files, Generate a crossplot of neutron porosity versus density for well 15_9-15, highlight potential gas zones, and calculate average porosity in the reservoir interval (2500 - 3500 m). 
+    What lithology dominates this section based on the gamma ray response?`,
+    `Evaluate the LAS data from wells 15_9-15 and 34_8-1 to identify potential hydrocarbon-bearing zones. 
+    Calculate water saturation using the Archie equation with the following parameters: a=1, m=2, n=2, Rw=0.05 ohm-m at formation temperature. 
+    Generate a multi-well comparison showing gamma ray, resistivity, and calculated water saturation. 
+    Which well shows better reservoir quality and why?`,
+    `Develop a comprehensive petrophysical model for Well 15_9-15 using the available LAS files. 
+    First, perform environmental corrections on the log data. 
+    Then, determine clay volume using gamma ray index, calculate effective porosity accounting for clay effects, and estimate permeability using a suitable model. 
+    Finally, identify pay zones using cutoffs of Vclay<30%, porosity>12%, and Sw<50%. 
+    Present your results as a composite log display and summarize the net pay thickness and average petrophysical properties. 
     `,
 ]
