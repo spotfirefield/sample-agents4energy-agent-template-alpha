@@ -4,9 +4,11 @@ import { getConfiguredAmplifyClient } from '../../../utils/amplifyUtils';
 
 import { ChatBedrockConverse } from "@langchain/aws";
 import { HumanMessage, ToolMessage, BaseMessage, SystemMessage, AIMessageChunk, AIMessage } from "@langchain/core/messages";
-import { createReactAgent } from "@langchain/langgraph/prebuilt";
 import { Calculator } from "@langchain/community/tools/calculator";
-import { DuckDuckGoSearch } from "@langchain/community/tools/duckduckgo_search";
+import { Tool, StructuredToolInterface, ToolSchemaBase } from "@langchain/core/tools";
+
+import { createReactAgent } from "@langchain/langgraph/prebuilt";
+import { MultiServerMCPClient } from "@langchain/mcp-adapters";
 
 import { publishResponseStreamChunk } from "../graphql/mutations";
 
@@ -14,15 +16,21 @@ import { setChatSessionId } from "../tools/toolUtils";
 import { s3FileManagementTools } from "../tools/s3ToolBox";
 import { userInputTool } from "../tools/userInputTool";
 import { pysparkTool } from "../tools/athenaPySparkTool";
-// import { webBrowserTool } from "../tools/webBrowserTool";
 import { renderAssetTool } from "../tools/renderAssetTool";
-import { createProjectToolBuilder } from "../tools/createProjectTool";
+import { createProjectTool } from "../tools/createProjectTool";
 // import { permeabilityCalculator } from "../tools/customWorkshopTool";
 
 import { Schema } from '../../data/resource';
 
 import { getLangChainChatMessagesStartingWithHumanMessage, getLangChainMessageTextContent, publishMessage, stringifyLimitStringLength } from '../../../utils/langChainUtils';
 import { EventEmitter } from "events";
+
+import { startMcpBridgeServer } from "./awsSignedMcpBridge"
+
+const USE_MCP = false;
+const LOCAL_PROXY_PORT = 3020
+
+let mcpTools: StructuredToolInterface<ToolSchemaBase, any, any>[] = []
 
 // Increase the default max listeners to prevent warnings
 EventEmitter.defaultMaxListeners = 10;
@@ -38,17 +46,11 @@ export const handler: Schema["invokeReActAgent"]["functionHandler"] = async (eve
     const userId = event.arguments.userId || (event.identity && 'sub' in event.identity ? event.identity.sub : null);
     if (!userId) throw new Error("userId is required");
 
-    // const origin = event.arguments.origin || (event.request?.headers?.origin || null);
-    // if (!origin) throw new Error("origin is required");
-    // console.log('origin:', origin);
     try {
         if (event.arguments.chatSessionId === null) throw new Error("chatSessionId is required");
 
         // Set the chat session ID for use by the S3 tools
         setChatSessionId(event.arguments.chatSessionId);
-
-        // // Set the origin from the event arguments or request headers
-        // setOrigin(origin);
 
         // Define the S3 prefix for this chat session (needed for env vars)
         const bucketName = process.env.STORAGE_BUCKET_NAME;
@@ -56,29 +58,87 @@ export const handler: Schema["invokeReActAgent"]["functionHandler"] = async (eve
 
         const amplifyClient = getConfiguredAmplifyClient();
 
+        amplifyClient.graphql({
+            query: publishResponseStreamChunk,
+            variables: {
+                chunkText: "Getting chat messages",
+                index: 0,
+                chatSessionId: event.arguments.chatSessionId
+            }
+        })
+
         // This function includes validation to prevent "The text field in the ContentBlock object is blank" errors
         // by ensuring no message content is empty when sent to Bedrock
         const chatSessionMessages = await getLangChainChatMessagesStartingWithHumanMessage(event.arguments.chatSessionId)
 
-       
+        if (chatSessionMessages.length === 0) {
+            console.warn('No messages found in chat session')
+            return
+        }
 
         const agentModel = new ChatBedrockConverse({
             model: process.env.AGENT_MODEL_ID,
             // temperature: 0
         });
 
-        const agentTools = [
-            // permeabilityCalculator,
+        if (mcpTools.length === 0 && USE_MCP) {
+            await amplifyClient.graphql({
+                query: publishResponseStreamChunk,
+                variables: {
+                    chunkText: "Listing MCP tools",
+                    index: 0,
+                    chatSessionId: event.arguments.chatSessionId
+                }
+            })
+
+            // Start the MCP bridge server with default options
+            startMcpBridgeServer({
+                port: LOCAL_PROXY_PORT,
+                service: 'lambda'
+            })
+
+            const mcpClient = new MultiServerMCPClient({
+                useStandardContentBlocks: true,
+                prefixToolNameWithServerName: false,
+                // additionalToolNamePrefix: "",
+
+                mcpServers: {
+                    a4e: {
+                        url: `http://localhost:${LOCAL_PROXY_PORT}/proxy`,
+                        headers: {
+                            'target-url': process.env.MCP_FUNCTION_URL!,
+                            'accept': 'application/json',
+                            'jsonrpc': '2.0',
+                            'chat-session-id': event.arguments.chatSessionId
+                        }
+                    }
+                }
+            })
+
+            mcpTools = await mcpClient.getTools()
+
+            await amplifyClient.graphql({
+                query: publishResponseStreamChunk,
+                variables: {
+                    chunkText: "Completed listing MCP tools",
+                    index: 0,
+                    chatSessionId: event.arguments.chatSessionId
+                }
+            })
+        }
+
+        console.log('Mcp Tools: ', mcpTools)
+
+        const agentTools = USE_MCP ? mcpTools : [
             new Calculator(),
-            // new DuckDuckGoSearch({maxResults: 3}),
-            // webBrowserTool,
+            ...s3FileManagementTools,
             userInputTool,
-            createProjectToolBuilder({
-                sourceChatSessionId: event.arguments.chatSessionId,
-                foundationModelId: foundationModelId
-            }),
+            createProjectTool,
             pysparkTool({
-                additionalSetupScript:`
+                additionalToolDescription: `
+                            By default, plots will have a lograthmic y axis and a white backgrount.
+                            `,
+                additionalSetupScript: `
 import plotly.io as pio
 import plotly.graph_objects as go
 
@@ -98,8 +158,8 @@ custom_layout = go.Layout(
 custom_template = go.layout.Template(layout=custom_layout)
 pio.templates["white_clean_log"] = custom_template
 pio.templates.default = "white_clean_log"
-                `,}),
-            ...s3FileManagementTools,
+                            `,
+            }),
             renderAssetTool
         ]
 
@@ -108,41 +168,6 @@ pio.templates.default = "white_clean_log"
             tools: agentTools,
         });
 
-        //  // If the last message is an assistant message with a tool call, call the tool with the arguments
-        //  if (
-        //     chatSessionMessages.length > 0 && 
-        //     chatSessionMessages[chatSessionMessages.length - 1] instanceof AIMessage && 
-        //     (chatSessionMessages[chatSessionMessages.length - 1] as AIMessage).tool_calls
-        // ) {
-        //     console.log('Chat messages end with a tool call but no tool response. Invoking tool...')
-        //     const toolCall = (chatSessionMessages[chatSessionMessages.length - 1] as AIMessage).tool_calls![0]
-        //     const toolName = toolCall.name
-        //     const toolArgs = toolCall.args
-        //     const selectedTool = agentTools.find(tool => tool.name === toolName)
-        //     if (selectedTool) {
-        //         try {
-        //             const toolResult = await selectedTool.invoke(toolArgs as any)
-        //             console.log('toolResult:\n', JSON.stringify(toolResult, null, 2))
-        //             const toolMessage = new ToolMessage({
-        //                 content: JSON.stringify(toolResult),
-        //                 name: toolName,
-        //                 tool_call_id: toolCall.id!
-        //             })
-        //             chatSessionMessages.push(toolMessage)
-        //             await publishMessage({
-        //                 chatSessionId: event.arguments.chatSessionId,
-        //                 fieldName: graphQLFieldName,
-        //                 owner: userId,
-        //                 message: toolMessage
-        //             })
-        //         } catch (error) {
-        //             console.error('Tool invocation error:', error)
-        //             throw error
-        //         }
-        //     }
-        // }
-
-        
         let systemMessageContent = `
 You are a helpful llm agent showing a demo workflow. 
 Use markdown formatting for your responses (like **bold**, *italic*, ## headings, etc.), but DO NOT wrap your response in markdown code blocks.
@@ -153,8 +178,8 @@ Create intermediate files to store your planned actions, thoughts and work. Use 
 Store them in the 'intermediate' directory. After you complete a planned step, record the results in the file.
 
 When ingesting data:
-- To generate sample data, ust he pysparkTool and not the writeFile tool
-- You 'spark.sql("SHOW TABLES IN sap")'
+- When quering data, first 
+- To generate sample data, use the pysparkTool and not the writeFile tool
 
 When creating plots:
 - ALWAYS check for and use existing files and data tables before generating new ones
@@ -211,7 +236,7 @@ When using the textToTableTool:
             input,
             {
                 version: "v2",
-                recursionLimit: 100 
+                recursionLimit: 100
             }
         );
 
@@ -250,9 +275,30 @@ When using the textToTableTool:
                                     const toolCallArgs = toolCallMessage.tool_calls?.[0].args
                                     const toolName = streamChunk.lc_kwargs.name
                                     const selectedToolSchema = agentTools.find(tool => tool.name === toolName)?.schema
-                                    const zodError = selectedToolSchema?.safeParse(toolCallArgs)
-                                    console.log({toolCallMessage, toolCallArgs, toolName, selectedToolSchema, zodError, formattedZodError: zodError?.error?.format()})
-                                    
+
+
+                                    // Check if the schema is a Zod schema with safeParse method
+                                    const isZodSchema = (schema: any): schema is { safeParse: Function } => {
+                                        return schema && typeof schema.safeParse === 'function';
+                                    }
+
+                                    //TODO: If the schema is a json schema, convert it to ZOD and do the same error checking: import { jsonSchemaToZod } from "json-schema-to-zod";
+                                    let zodError;
+                                    if (selectedToolSchema && isZodSchema(selectedToolSchema)) {
+                                        zodError = selectedToolSchema.safeParse(toolCallArgs);
+                                        console.log({ toolCallMessage, toolCallArgs, toolName, selectedToolSchema, zodError, formattedZodError: zodError?.error?.format() });
+
+                                        if (zodError?.error) {
+                                            streamChunk.content += '\n\n' + stringify(zodError.error.format());
+                                        }
+                                    } else {
+                                        selectedToolSchema
+                                        console.log({ toolCallMessage, toolCallArgs, toolName, selectedToolSchema, message: "Schema is not a Zod schema with safeParse method" });
+                                    }
+
+                                    // const zodError = selectedToolSchema?.safeParse(toolCallArgs)
+                                    console.log({ toolCallMessage, toolCallArgs, toolName, selectedToolSchema, zodError, formattedZodError: zodError?.error?.format() })
+
                                     streamChunk.content += '\n\n' + stringify(zodError?.error?.format())
                                 }
 
@@ -305,23 +351,11 @@ When using the textToTableTool:
                     break;
             }
         }
-
-        //If the agent is invoked by another agent, create a tool response message with it's output
-        if (event.arguments.respondToAgent) {
-            
-            const toolResponseMessage = new ToolMessage({
-                content: "This is a tool response message",
-                tool_call_id: "123",
-                name: "toolName",
-                // name: graphQLFieldName
-            })
-        }
-
     } catch (error) {
         const amplifyClient = getConfiguredAmplifyClient();
 
         console.warn("Error responding to user:", JSON.stringify(error, null, 2));
-        
+
         // Send the complete error message to the client
         const errorMessage = error instanceof Error ? error.stack || error.message : String(error);
 
