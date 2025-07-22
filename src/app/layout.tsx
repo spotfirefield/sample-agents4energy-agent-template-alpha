@@ -14,8 +14,7 @@ import "./globals.css";
 import "@aws-amplify/ui-react/styles.css";
 import { FileSystemProvider } from "@/contexts/FileSystemContext";
 
-// import { withAuth } from "@/components/WithAuth";
-import WithAuth from "@/components/WithAuth";
+// import WithAuth from "@/components/WithAuth";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -23,18 +22,9 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "Digital Assistant",
-  description: "A digital assistant for your needs",
+  title: "Agents For Energy",
+  description: "Accelerate your business with generative AI",
 };
-
-// Create a wrapper component to pass to withAuth
-const ChildrenWrapper = ({ children }: { children: React.ReactNode }) => {
-  return <>{children}</>;
-};
-
-// // Apply withAuth to the wrapper component
-// const AuthProtectedChildren = withAuth(ChildrenWrapper);
-
 
 export default function RootLayout({
   children,
@@ -51,7 +41,7 @@ export default function RootLayout({
           <ConfigureAmplify />
           <FileSystemProvider>
             <Providers>
-              <WithAuth>
+              {/* <WithAuth> */}
                 <ThemeProvider theme={theme}>
                   <CssBaseline />
                   <div style={{
@@ -69,7 +59,7 @@ export default function RootLayout({
                     </div>
                   </div>
                 </ThemeProvider>
-              </WithAuth>
+              {/* </WithAuth> */}
             </Providers>
           </FileSystemProvider>
         </AppRouterCacheProvider>

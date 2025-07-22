@@ -10,7 +10,7 @@ import PsychologyIcon from '@mui/icons-material/Psychology';
 import ChatBox from "@/components/ChatBox"
 import EditableTextBox from '@/components/EditableTextBox';
 import FileDrawer from '@/components/FileDrawer';
-import { Authenticator } from '@aws-amplify/ui-react';
+import { addAuthToPage } from '@/components/WithAuth';
 
 const amplifyClient = generateClient<Schema>();
 
@@ -67,144 +67,142 @@ function Page({
     const drawerVariant = "temporary";
 
     return (
-        <Authenticator>
+        <Box sx={{
+            height: '100%',
+            display: 'flex',
+            overflow: 'hidden',
+            p: 2
+        }}>
+            {/* Main chat area - always full width with padding for desktop drawer */}
             <Box sx={{
                 height: '100%',
-                display: 'flex',
-                overflow: 'hidden',
-                p: 2
+                width: '100%',
+                position: 'relative',
+                transition: theme.transitions.create(['padding-right'], {
+                    easing: theme.transitions.easing.easeOut,
+                    duration: theme.transitions.duration.standard,
+                }),
+                ...(fileDrawerOpen && !isMobile && {
+                    paddingRight: '45%'
+                })
             }}>
-                {/* Main chat area - always full width with padding for desktop drawer */}
-                <Box sx={{
-                    height: '100%',
-                    width: '100%',
-                    position: 'relative',
-                    transition: theme.transitions.create(['padding-right'], {
-                        easing: theme.transitions.easing.easeOut,
-                        duration: theme.transitions.duration.standard,
-                    }),
-                    ...(fileDrawerOpen && !isMobile && {
-                        paddingRight: '45%'
-                    })
-                }}>
-                    <Paper
-                        elevation={3}
-                        sx={{
-                            borderRadius: 2,
-                            overflow: 'hidden',
-                            backgroundColor: '#f8f9fa',
-                            boxShadow: '0 4px 20px rgba(0,0,0,0.08)',
-                            display: 'flex',
-                            flexDirection: 'column',
-                            height: '100%'
-                        }}
-                    >
-                        <Box sx={{
-                            p: 3,
-                            backgroundColor: '#fff',
-                            borderBottom: '1px solid rgba(0,0,0,0.08)',
-                            display: 'flex',
-                            justifyContent: 'space-between',
-                            alignItems: 'center'
-                        }}>
+                <Paper
+                    elevation={3}
+                    sx={{
+                        borderRadius: 2,
+                        overflow: 'hidden',
+                        backgroundColor: '#f8f9fa',
+                        boxShadow: '0 4px 20px rgba(0,0,0,0.08)',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        height: '100%'
+                    }}
+                >
+                    <Box sx={{
+                        p: 3,
+                        backgroundColor: '#fff',
+                        borderBottom: '1px solid rgba(0,0,0,0.08)',
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center'
+                    }}>
 
-                            <EditableTextBox
-                                object={activeChatSession}
-                                fieldPath="name"
-                                onUpdate={setActiveChatSessionAndUpload}
-                                typographyVariant="h3"
-                            />
-                            <Box sx={{
-                                display: 'flex',
-                                gap: 1,
-                                justifyContent: 'flex-end'
-                            }}>
-                                <Tooltip title={showChainOfThought ? "Hide Chain of Thought" : "Show Chain of Thought"}>
-                                    <IconButton
-                                        onClick={() => setShowChainOfThought(!showChainOfThought)}
-                                        color="primary"
-                                        size="large"
-                                        sx={{
-                                            bgcolor: showChainOfThought ? 'rgba(25, 118, 210, 0.08)' : 'transparent',
-                                            zIndex: 1300 // Ensure button is above drawer
-                                        }}
-                                    >
-                                        <PsychologyIcon />
-                                    </IconButton>
-                                </Tooltip>
-                                <Tooltip title={fileDrawerOpen ? "Hide Files" : "View Files"}>
-                                    <IconButton
-                                        onClick={() => setFileDrawerOpen(!fileDrawerOpen)}
-                                        color="primary"
-                                        size="large"
-                                        sx={{
-                                            bgcolor: fileDrawerOpen ? 'rgba(25, 118, 210, 0.08)' : 'transparent',
-                                            zIndex: 1300 // Ensure button is above drawer
-                                        }}
-                                    >
-                                        <FolderIcon />
-                                    </IconButton>
-                                </Tooltip>
-                            </Box>
-                        </Box>
-
-                        <Divider />
-
+                        <EditableTextBox
+                            object={activeChatSession}
+                            fieldPath="name"
+                            onUpdate={setActiveChatSessionAndUpload}
+                            typographyVariant="h3"
+                        />
                         <Box sx={{
                             display: 'flex',
-                            flexDirection: 'column',
-                            overflow: 'hidden',
-                            p: 3,
-                            backgroundColor: '#f8f9fa',
-                            flex: 1
+                            gap: 1,
+                            justifyContent: 'flex-end'
                         }}>
-                            <ChatBox
-                                chatSessionId={activeChatSession.id}
-                                showChainOfThought={showChainOfThought}
-                            />
+                            <Tooltip title={showChainOfThought ? "Hide Chain of Thought" : "Show Chain of Thought"}>
+                                <IconButton
+                                    onClick={() => setShowChainOfThought(!showChainOfThought)}
+                                    color="primary"
+                                    size="large"
+                                    sx={{
+                                        bgcolor: showChainOfThought ? 'rgba(25, 118, 210, 0.08)' : 'transparent',
+                                        zIndex: 1300 // Ensure button is above drawer
+                                    }}
+                                >
+                                    <PsychologyIcon />
+                                </IconButton>
+                            </Tooltip>
+                            <Tooltip title={fileDrawerOpen ? "Hide Files" : "View Files"}>
+                                <IconButton
+                                    onClick={() => setFileDrawerOpen(!fileDrawerOpen)}
+                                    color="primary"
+                                    size="large"
+                                    sx={{
+                                        bgcolor: fileDrawerOpen ? 'rgba(25, 118, 210, 0.08)' : 'transparent',
+                                        zIndex: 1300 // Ensure button is above drawer
+                                    }}
+                                >
+                                    <FolderIcon />
+                                </IconButton>
+                            </Tooltip>
                         </Box>
-                    </Paper>
-                </Box>
-
-                {/* Floating file button for mobile - only show when drawer is closed */}
-                {isMobile && !fileDrawerOpen && (
-                    <Box
-                        sx={{
-                            position: 'fixed',
-                            bottom: 16,
-                            right: 16,
-                            zIndex: 1100
-                        }}
-                    >
-                        <Tooltip title="View Files">
-                            <IconButton
-                                onClick={() => setFileDrawerOpen(!fileDrawerOpen)}
-                                color="primary"
-                                size="large"
-                                sx={{
-                                    bgcolor: 'white',
-                                    boxShadow: '0 3px 5px rgba(0,0,0,0.2)',
-                                    '&:hover': {
-                                        bgcolor: 'white',
-                                    }
-                                }}
-                            >
-                                <FolderIcon />
-                            </IconButton>
-                        </Tooltip>
                     </Box>
-                )}
 
-                {/* File Drawer - completely different handling for mobile vs desktop */}
-                <FileDrawer
-                    open={fileDrawerOpen}
-                    onClose={() => setFileDrawerOpen(false)}
-                    chatSessionId={activeChatSession.id}
-                    variant={drawerVariant}
-                />
+                    <Divider />
+
+                    <Box sx={{
+                        display: 'flex',
+                        flexDirection: 'column',
+                        overflow: 'hidden',
+                        p: 3,
+                        backgroundColor: '#f8f9fa',
+                        flex: 1
+                    }}>
+                        <ChatBox
+                            chatSessionId={activeChatSession.id}
+                            showChainOfThought={showChainOfThought}
+                        />
+                    </Box>
+                </Paper>
             </Box>
-        </Authenticator>
+
+            {/* Floating file button for mobile - only show when drawer is closed */}
+            {isMobile && !fileDrawerOpen && (
+                <Box
+                    sx={{
+                        position: 'fixed',
+                        bottom: 16,
+                        right: 16,
+                        zIndex: 1100
+                    }}
+                >
+                    <Tooltip title="View Files">
+                        <IconButton
+                            onClick={() => setFileDrawerOpen(!fileDrawerOpen)}
+                            color="primary"
+                            size="large"
+                            sx={{
+                                bgcolor: 'white',
+                                boxShadow: '0 3px 5px rgba(0,0,0,0.2)',
+                                '&:hover': {
+                                    bgcolor: 'white',
+                                }
+                            }}
+                        >
+                            <FolderIcon />
+                        </IconButton>
+                    </Tooltip>
+                </Box>
+            )}
+
+            {/* File Drawer - completely different handling for mobile vs desktop */}
+            <FileDrawer
+                open={fileDrawerOpen}
+                onClose={() => setFileDrawerOpen(false)}
+                chatSessionId={activeChatSession.id}
+                variant={drawerVariant}
+            />
+        </Box>
     );
 }
 
-export default Page
+export default addAuthToPage(Page)

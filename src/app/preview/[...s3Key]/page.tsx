@@ -18,7 +18,7 @@ interface PageProps {
   };
 }
 
-export default function FilePage({ params }: PageProps) {
+const Page = function FilePage({ params }: PageProps) {
   const s3Key = params.s3Key.join('/');
   const s3KeyDecoded = s3Key.split('/').map((item: string) => decodeURIComponent(item)).join('/');
   const [fileUrl, setFileUrl] = useState<URL>();
@@ -658,3 +658,5 @@ export default function FilePage({ params }: PageProps) {
     </Box>
   );
 }
+
+export default Page;

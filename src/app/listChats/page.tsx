@@ -9,7 +9,7 @@ import { Box, Button, Card, CardContent, Typography } from '@mui/material';
 import DeleteIcon from '@mui/icons-material/Delete';
 const amplifyClient = generateClient<Schema>();
 
-import WithAuth from '@/components/WithAuth';
+import WithAuth, { addAuthToPage } from '@/components/WithAuth';
 
 const Page = () => {
     const { user } = useAuthenticator((context) => [context.user]);
@@ -31,39 +31,37 @@ const Page = () => {
     }, [user.userId]);
 
     return (
-        <Authenticator>
-            <Box>
-                {chatSessions.map(chatSession => (
-                    <Card key={chatSession.id}>
-                        <CardContent>
-                            <Typography variant="h5">{chatSession.name}</Typography>
-                            <Box mt={2}>
-                                <Link href={`/chat/${chatSession.id}`}>
-                                    Open Chat
-                                </Link>
-                                {/* <Button variant="contained" color="primary" href={`/chat/${chatSession.id}`}>
+        <Box>
+            {chatSessions.map(chatSession => (
+                <Card key={chatSession.id}>
+                    <CardContent>
+                        <Typography variant="h5">{chatSession.name}</Typography>
+                        <Box mt={2}>
+                            <Link href={`/chat/${chatSession.id}`}>
+                                Open Chat
+                            </Link>
+                            {/* <Button variant="contained" color="primary" href={`/chat/${chatSession.id}`}>
                                     Open Chat
                                 </Button> */}
-                            </Box>
-                            <Box mt={2}>
-                                <Button
-                                    variant="contained"
-                                    startIcon={<DeleteIcon />}
-                                    color="secondary"
-                                    onClick={async () => {
-                                        if (window.confirm(`Are you sure you want to delete the chat "${chatSession.name}"?`)) {
-                                            await amplifyClient.models.ChatSession.delete({ id: chatSession.id! });
-                                            setChatSessions(chatSessions.filter(c => c.id !== chatSession.id));
-                                        }
-                                    }}
-                                />
-                            </Box>
-                        </CardContent>
-                    </Card>
-                ))}
-            </Box>
-        </Authenticator>
+                        </Box>
+                        <Box mt={2}>
+                            <Button
+                                variant="contained"
+                                startIcon={<DeleteIcon />}
+                                color="secondary"
+                                onClick={async () => {
+                                    if (window.confirm(`Are you sure you want to delete the chat "${chatSession.name}"?`)) {
+                                        await amplifyClient.models.ChatSession.delete({ id: chatSession.id! });
+                                        setChatSessions(chatSessions.filter(c => c.id !== chatSession.id));
+                                    }
+                                }}
+                            />
+                        </Box>
+                    </CardContent>
+                </Card>
+            ))}
+        </Box>
     );
 }
 
-export default Page;
+export default addAuthToPage(Page);
