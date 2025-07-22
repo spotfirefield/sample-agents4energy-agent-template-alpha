@@ -129,7 +129,7 @@ export default function FilePage({ params }: PageProps) {
       }
       
       /* Ensure images and plots fit within the page */
-      img, svg, canvas {
+      img, canvas {
         max-width: 100% !important;
         width: 650px !important; /* Fixed width to prevent overflow */
         height: auto !important;
@@ -154,14 +154,14 @@ export default function FilePage({ params }: PageProps) {
         width: 650px !important; /* Fixed width to prevent overflow */
         max-width: 100% !important;
         height: auto !important;
-        max-height: none !important;
+        min-height: 500px !important; /* Ensure minimum height for plots */
         margin: 0 auto !important;
         page-break-inside: avoid !important;
         page-break-before: auto !important;
         page-break-after: auto !important;
         display: block !important;
         position: relative !important;
-        overflow-x: hidden !important; /* Prevent horizontal overflow */
+        overflow: visible !important; /* Allow content to be visible */
       }
       
       /* Ensure SVG plots render correctly */
@@ -169,24 +169,42 @@ export default function FilePage({ params }: PageProps) {
         width: 650px !important; /* Fixed width to prevent overflow */
         max-width: 100% !important;
         height: auto !important;
-        max-height: none !important;
+        min-height: 500px !important; /* Ensure minimum height for SVGs */
         display: block !important;
         page-break-inside: avoid !important;
-        overflow-y: visible !important;
-        overflow-x: hidden !important;
+        overflow: visible !important;
+      }
+      
+      /* Ensure SVG viewBox is preserved */
+      svg[viewBox] {
+        width: 650px !important;
+        height: 100% !important;
+        min-height: 500px !important;
+      }
+      
+      /* Ensure SVG groups are fully visible */
+      svg g {
+        overflow: visible !important;
       }
       
       /* Force all plot elements to be visible */
       .plot-container *, .js-plotly-plot * {
         visibility: visible !important;
         opacity: 1 !important;
-        overflow-y: visible !important;
-        overflow-x: hidden !important;
+        overflow: visible !important;
       }
       
       /* Ensure chart labels and axes are visible */
-      .xaxislayer-above, .yaxislayer-above, .zaxislayer-above {
+      .xaxislayer-above, .yaxislayer-above, .zaxislayer-above,
+      .gridlayer, .plot, .scatterlayer, .legend {
         visibility: visible !important;
+        overflow: visible !important;
+      }
+      
+      /* Plotly-specific fixes */
+      .main-svg .bglayer, .main-svg .layer-below, .main-svg .layer-above,
+      .main-svg .cartesianlayer, .main-svg .polarlayer {
+        overflow: visible !important;
       }
       
       /* Allow page breaks between sections but not within them */
@@ -240,8 +258,14 @@ export default function FilePage({ params }: PageProps) {
         height: auto !important;
         min-height: 0 !important;
         max-height: none !important;
-        overflow-y: visible !important;
-        overflow-x: hidden !important;
+        overflow: visible !important;
+      }
+      
+      /* Ensure bottom labels are visible */
+      .xtick, .ytick, .x-axis-label, .y-axis-label, 
+      .legend text, .annotation-text, .axis-title {
+        visibility: visible !important;
+        overflow: visible !important;
       }
     }
   `;
@@ -264,6 +288,7 @@ export default function FilePage({ params }: PageProps) {
       <head>
         <title>Print - ${s3KeyDecoded}</title>
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
         <style>
           ${printStyles}
           
@@ -279,8 +304,7 @@ export default function FilePage({ params }: PageProps) {
             width: 650px !important; /* Fixed width to prevent overflow */
             max-width: 100% !important;
             margin: 0 auto !important;
-            overflow-y: visible !important;
-            overflow-x: hidden !important;
+            overflow: visible !important;
             height: auto !important;
             display: block !important;
             page-break-inside: avoid !important;
@@ -288,7 +312,7 @@ export default function FilePage({ params }: PageProps) {
           
           @page {
             size: auto; /* Default to portrait, browser will use landscape when appropriate */
-            margin: 10mm; /* Small margin from page border */
+            margin: 15mm; /* Increased margin to prevent edge clipping */
           }
           
           /* Ensure content fits within page */
@@ -296,13 +320,19 @@ export default function FilePage({ params }: PageProps) {
             width: 650px !important; /* Fixed width to prevent overflow */
             max-width: 100% !important;
             height: auto !important;
-            max-height: none !important;
-            overflow-y: visible !important;
-            overflow-x: hidden !important; /* Prevent horizontal overflow */
+            min-height: 500px !important; /* Ensure minimum height for plots */
+            overflow: visible !important; /* Allow content to be visible */
             page-break-inside: avoid !important;
             display: block !important;
             margin: 0 auto !important;
-            padding: 0 !important;
+            padding: 0 0 50px 0 !important; /* Add bottom padding to ensure labels are visible */
+          }
+          
+          /* Ensure SVG viewBox is preserved */
+          svg[viewBox] {
+            width: 650px !important;
+            height: 100% !important;
+            min-height: 500px !important;
           }
         </style>
       </head>
@@ -433,46 +463,73 @@ export default function FilePage({ params }: PageProps) {
           window.onload = function() {
             // Add a longer delay for complex plots
             setTimeout(function() {
-              // Force recalculation of layout before printing
-              document.querySelectorAll('.plot-container, svg, .js-plotly-plot').forEach(function(el) {
-                if (el) {
-                  // Force a reflow
-                  void el.offsetHeight;
-                  
-                  // If this is an SVG, ensure it's fully visible
-                  if (el.tagName === 'SVG') {
-                    el.setAttribute('width', '650px');
-                    el.setAttribute('height', 'auto');
-                    el.style.maxWidth = '100%';
-                    el.style.maxHeight = 'none';
-                    el.style.overflowY = 'visible';
-                    el.style.overflowX = 'hidden';
-                  }
-                }
-              });
-              
-              // Final check before printing
-              var allSvgs = document.querySelectorAll('svg');
-              allSvgs.forEach(function(svg) {
+              // Process all SVG elements to ensure proper rendering
+              document.querySelectorAll('svg').forEach(function(svg) {
+                // Get the original viewBox if it exists
+                const viewBox = svg.getAttribute('viewBox');
+                
+                // Set explicit dimensions
                 svg.setAttribute('width', '650px');
-                svg.setAttribute('height', 'auto');
+                svg.setAttribute('height', '600px'); // Fixed height to ensure bottom elements are visible
                 svg.style.maxWidth = '100%';
-                svg.style.maxHeight = 'none';
-                svg.style.overflowY = 'visible';
-                svg.style.overflowX = 'hidden';
+                svg.style.overflow = 'visible';
+                
+                // Preserve the viewBox if it exists
+                if (viewBox) {
+                  svg.setAttribute('preserveAspectRatio', 'xMinYMin meet');
+                }
+                
+                // Ensure all child elements are visible
+                const allElements = svg.querySelectorAll('*');
+                allElements.forEach(function(el) {
+                  el.style.overflow = 'visible';
+                });
               });
               
-              // Ensure all plot containers don't overflow horizontally
+              // Process all plot containers
               document.querySelectorAll('.plot-container, .plotly, .js-plotly-plot').forEach(function(el) {
                 el.style.width = '650px';
                 el.style.maxWidth = '100%';
-                el.style.margin = '0 auto';
-                el.style.overflowX = 'hidden';
-                el.style.overflowY = 'visible';
+                el.style.height = 'auto';
+                el.style.minHeight = '600px'; // Fixed minimum height
+                el.style.overflow = 'visible';
+                el.style.marginBottom = '50px'; // Add margin at the bottom
+                
+                // Force a reflow
+                void el.offsetHeight;
               });
               
-              window.print();
-            }, 5000); // Longer timeout for better rendering
+              // Special handling for Plotly plots
+              if (window.Plotly && document.querySelector('.js-plotly-plot')) {
+                try {
+                  // Attempt to relayout all Plotly plots to ensure they render properly
+                  document.querySelectorAll('.js-plotly-plot').forEach(function(plot) {
+                    if (plot._fullLayout) {
+                      Plotly.relayout(plot, {
+                        'autosize': true,
+                        'height': 600, // Fixed height to ensure all elements are visible
+                        'margin': { t: 30, b: 80, l: 60, r: 30 } // Increased bottom margin
+                      });
+                    }
+                  });
+                } catch (e) {
+                  console.error('Error relayouting Plotly plots:', e);
+                }
+              }
+              
+              // Final check for any elements with fixed heights
+              document.querySelectorAll('[style*="height:"]').forEach(function(el) {
+                el.style.height = 'auto';
+                el.style.minHeight = '0';
+                el.style.maxHeight = 'none';
+                el.style.overflow = 'visible';
+              });
+              
+              // Print after a longer delay to ensure everything is rendered
+              setTimeout(function() {
+                window.print();
+              }, 1000);
+            }, 7000); // Increased timeout for better rendering
           };
         </script>
       </body>
@@ -491,7 +548,7 @@ export default function FilePage({ params }: PageProps) {
           @media print {
             @page {
               size: auto; /* Default to portrait, browser will use landscape when appropriate */
-              margin: 10mm; /* Small margin from page border */
+              margin: 15mm; /* Increased margin to prevent edge clipping */
             }
           }
         `}</style>

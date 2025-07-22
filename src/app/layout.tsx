@@ -14,6 +14,8 @@ import "./globals.css";
 import "@aws-amplify/ui-react/styles.css";
 import { FileSystemProvider } from "@/contexts/FileSystemContext";
 
+import { Authenticator } from "@aws-amplify/ui-react";
+
 const inter = Inter({
   subsets: ["latin"],
   variable: "--font-inter",
@@ -38,23 +40,25 @@ export default function RootLayout({
           <ConfigureAmplify />
           <FileSystemProvider>
             <Providers>
-              <ThemeProvider theme={theme}>
-                <CssBaseline />
-                <div style={{ 
-                  display: 'flex', 
-                  flexDirection: 'column', 
-                  height: '100vh', 
-                  overflow: 'hidden' 
-                }}>
-                  <TopNavBar />
-                  <div style={{ 
-                    flexGrow: 1, 
-                    overflow: 'auto' 
+              {/* <Authenticator> */}
+                <ThemeProvider theme={theme}>
+                  <CssBaseline />
+                  <div style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    height: '100vh',
+                    overflow: 'hidden'
                   }}>
-                    {children}
+                    <TopNavBar />
+                    <div style={{
+                      flexGrow: 1,
+                      overflow: 'auto'
+                    }}>
+                      {children}
+                    </div>
                   </div>
-                </div>
-              </ThemeProvider>
+                </ThemeProvider>
+              {/* </Authenticator> */}
             </Providers>
           </FileSystemProvider>
         </AppRouterCacheProvider>
@@ -62,5 +66,3 @@ export default function RootLayout({
     </html>
   );
 }
-
-
