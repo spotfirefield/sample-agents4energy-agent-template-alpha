@@ -3,12 +3,9 @@ import { auth } from './auth/resource';
 import { data, mcpAgentInvoker, reActAgentFunction } from './data/resource';
 import { storage } from './storage/resource';
 import cdk, {
-  aws_apigateway as apigateway,
-  aws_appsync as appsync,
   aws_athena as athena,
   aws_iam as iam,
   aws_lambda as lambda,
-  aws_lambda_nodejs as lambdaNodeJs,
 } from 'aws-cdk-lib'
 
 import path from 'path';
@@ -16,7 +13,6 @@ import { fileURLToPath } from 'url';
 
 import { PdfToYamlConstruct } from './custom/pdfToYamlConstruct';
 import { McpServerConstruct } from './custom/mcpServer';
-import mcp from 'middy-mcp';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -34,13 +30,16 @@ const stackUUID = cdk.Names.uniqueResourceName(
   backend.stack, {}
 ).toLowerCase().replace(/[^a-z0-9-_]/g, '').slice(-3)
 
+//This will disable the ability for users to sign up in the UI. The administrator will manually create users.
+const { cfnUserPool } = backend.auth.resources.cfnResources;
+cfnUserPool.adminCreateUserConfig = {
+  allowAdminCreateUserOnly: true,
+};
+
 const mcpAgentInvokerFunctionUrl = backend.mcpAgentInvoker.resources.lambda.addFunctionUrl({
   authType: lambda.FunctionUrlAuthType.AWS_IAM,
-  // authType: lambda.FunctionUrlAuthType.NONE, //This will generate a Sev2 Sim ticket
   // invokeMode: lambda.InvokeMode.RESPONSE_STREAM
 });
-
-
 
 const {
   lambdaFunction: awsMcpToolsFunction,
@@ -295,7 +294,3 @@ backend.addOutput({
   }
 });
 
-
-// backend.addOutput({ custom: { athenaWorkgroupName: athenaWorkgroup.name } });
-// backend.addOutput({ custom: { reactAgentLambdaArn: backend.reActAgentFunction.resources.lambda.functionArn } });
-// backend.addOutput({ custom: { awsMcpToolsFunctionUrl: awsMcpToolsFunctionUrl.url } });

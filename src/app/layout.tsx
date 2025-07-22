@@ -14,7 +14,8 @@ import "./globals.css";
 import "@aws-amplify/ui-react/styles.css";
 import { FileSystemProvider } from "@/contexts/FileSystemContext";
 
-import { withAuth } from "@/components/WithAuth";
+// import { withAuth } from "@/components/WithAuth";
+import WithAuth from "@/components/WithAuth";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -31,14 +32,16 @@ const ChildrenWrapper = ({ children }: { children: React.ReactNode }) => {
   return <>{children}</>;
 };
 
-// Apply withAuth to the wrapper component
-const AuthProtectedChildren = withAuth(ChildrenWrapper);
+// // Apply withAuth to the wrapper component
+// const AuthProtectedChildren = withAuth(ChildrenWrapper);
+
 
 export default function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+
   return (
     <html lang="en">
       <body
@@ -48,6 +51,7 @@ export default function RootLayout({
           <ConfigureAmplify />
           <FileSystemProvider>
             <Providers>
+              <WithAuth>
                 <ThemeProvider theme={theme}>
                   <CssBaseline />
                   <div style={{
@@ -61,10 +65,11 @@ export default function RootLayout({
                       flexGrow: 1,
                       overflow: 'auto'
                     }}>
-                      <AuthProtectedChildren children={children} />
+                      {children}
                     </div>
                   </div>
                 </ThemeProvider>
+              </WithAuth>
             </Providers>
           </FileSystemProvider>
         </AppRouterCacheProvider>
