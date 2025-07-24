@@ -11,6 +11,8 @@ interface PageProps {
 
 export async function GET(request: Request, { params }: PageProps) {
   try {
+    console.log('Get file request: ', request)
+
     // return NextResponse.json({hello: "world"})
     const s3Key = params.s3Key.join('/');
     const s3KeyDecoded = s3Key.split('/').map((item: string) => decodeURIComponent(item)).join('/');
@@ -25,9 +27,6 @@ export async function GET(request: Request, { params }: PageProps) {
 
     const fileResponse = await fetch(signedUrl);
 
-    // return NextResponse.json({signedUrl: signedUrl.toString()})
-    // return "Hello World"
-    // return signedUrl
     return fileResponse
 
     // // Redirect to the signed URL for direct file access
