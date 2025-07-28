@@ -1,36 +1,10 @@
 import aws4 from 'aws4';
 import http from 'http';
-import https from 'https';
 import axios from 'axios';
 // Removing dependency on amplifyUtils for testing
 // import { setAmplifyEnvVars } from '../../../utils/amplifyUtils';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { setAmplifyEnvVars } from '../../../utils/amplifyUtils';
-
-// Define interface for JSON-RPC message structure
-interface JSONRPCRequest {
-    jsonrpc: string;
-    method: string;
-    id?: string | number;
-    params?: Record<string, any>;
-}
-
-interface JSONRPCResponse {
-    jsonrpc: string;
-    id: string | number;
-    result?: any;
-    error?: {
-        code: number;
-        message: string;
-        data?: any;
-    };
-}
-
-type JSONRPCMessage = JSONRPCRequest | JSONRPCResponse;
-
-function onClientError(error: Error) {
-    console.warn('Error from local client:', error)
-}
 
 /**
  * Options for processing a signed MCP request
@@ -220,30 +194,6 @@ export const startMcpBridgeServer = async (options: McpBridgeOptions = {}) => {
     console.warn('MCP bridge server starting on port', port);
 
     return server;
-}
-
-/**
- * Parse command line arguments into options
- */
-function parseCommandLineArgs(): McpBridgeOptions {
-    const args = process.argv.slice(2);
-    const options: McpBridgeOptions = {};
-
-    for (let i = 0; i < args.length; i++) {
-        const arg = args[i];
-
-        if (arg === '--port' && i + 1 < args.length) {
-            options.port = parseInt(args[++i], 10);
-        } else if (arg === '--region' && i + 1 < args.length) {
-            options.region = args[++i];
-        } else if (arg === '--service' && i + 1 < args.length) {
-            options.service = args[++i];
-        } else if (arg === '--default-target-url' && i + 1 < args.length) {
-            options.defaultTargetUrl = args[++i];
-        }
-    }
-
-    return options;
 }
 
 /**

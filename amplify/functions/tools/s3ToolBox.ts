@@ -638,8 +638,8 @@ async function processDocumentLinks(content: string, chatSessionId: string): Pro
 
     // Function to process a path and return the full URL
     const getFullUrl = (filePath: string) => {
-        // Only process relative paths that don't start with http/https/files
-        if (filePath.startsWith('http://') || filePath.startsWith('https://')) {
+        // Only process relative paths that don't start with http/https/. If the path starts with /file/ it's already been processed.
+        if (filePath.startsWith('/file/') || filePath.startsWith('http://') || filePath.startsWith('https://')) {
             return filePath;
         }
 

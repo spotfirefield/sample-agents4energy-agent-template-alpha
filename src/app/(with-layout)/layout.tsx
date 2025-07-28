@@ -4,7 +4,7 @@ import { Inter } from "next/font/google";
 import { AppRouterCacheProvider } from '@mui/material-nextjs/v15-appRouter';
 import { ThemeProvider } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
-import theme from '../theme';
+import theme from '../../theme';
 
 import ConfigureAmplify from '@/components/ConfigureAmplify';
 import Providers from '@/components/Providers';
@@ -14,14 +14,16 @@ import "./globals.css";
 import "@aws-amplify/ui-react/styles.css";
 import { FileSystemProvider } from "@/contexts/FileSystemContext";
 
+// import WithAuth from "@/components/WithAuth";
+
 const inter = Inter({
   subsets: ["latin"],
   variable: "--font-inter",
 });
 
 export const metadata: Metadata = {
-  title: "Digital Assistant",
-  description: "A digital assistant for your needs",
+  title: "Agents For Energy",
+  description: "Accelerate your business with generative AI",
 };
 
 export default function RootLayout({
@@ -29,6 +31,7 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+
   return (
     <html lang="en">
       <body
@@ -38,23 +41,25 @@ export default function RootLayout({
           <ConfigureAmplify />
           <FileSystemProvider>
             <Providers>
-              <ThemeProvider theme={theme}>
-                <CssBaseline />
-                <div style={{ 
-                  display: 'flex', 
-                  flexDirection: 'column', 
-                  height: '100vh', 
-                  overflow: 'hidden' 
-                }}>
-                  <TopNavBar />
-                  <div style={{ 
-                    flexGrow: 1, 
-                    overflow: 'auto' 
+              {/* <WithAuth> */}
+                <ThemeProvider theme={theme}>
+                  <CssBaseline />
+                  <div style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    height: '100vh',
+                    overflow: 'hidden'
                   }}>
-                    {children}
+                    <TopNavBar />
+                    <div style={{
+                      flexGrow: 1,
+                      overflow: 'auto'
+                    }}>
+                      {children}
+                    </div>
                   </div>
-                </div>
-              </ThemeProvider>
+                </ThemeProvider>
+              {/* </WithAuth> */}
             </Providers>
           </FileSystemProvider>
         </AppRouterCacheProvider>
@@ -62,5 +67,3 @@ export default function RootLayout({
     </html>
   );
 }
-
-
