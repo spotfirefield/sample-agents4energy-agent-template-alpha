@@ -5,10 +5,11 @@ export const reActAgentFunction = defineFunction({
   entry: '../functions/reActAgent/handler.ts',
   timeoutSeconds: 900,
   environment: {
-    // AGENT_MODEL_ID: 'us.anthropic.claude-3-5-sonnet-20241022-v2:0'
     AGENT_MODEL_ID: 'us.anthropic.claude-3-5-haiku-20241022-v1:0',
-    // AGENT_MODEL_ID: 'us.anthropic.claude-3-7-sonnet-20250219-v1:0',
     // AGENT_MODEL_ID: 'us.anthropic.claude-sonnet-4-20250514-v1:0',
+    // AGENT_MODEL_ID: 'us.anthropic.claude-3-5-sonnet-20241022-v2:0'
+    // AGENT_MODEL_ID: 'us.anthropic.claude-3-7-sonnet-20250219-v1:0',
+    
 
     // MODEL_ID: 'us.anthropic.claude-3-sonnet-20240229-v1:0',
     // MODEL_ID: 'us.amazon.nova-pro-v1:0'
