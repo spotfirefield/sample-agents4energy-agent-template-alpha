@@ -362,14 +362,16 @@ When using the textToTableTool:
                 streamErrorMessage += streamError.name + "\n" + streamError.message
             }
             
-            await amplifyClient.graphql({
+            const publishChunkResponse = await amplifyClient.graphql({
                     query: publishResponseStreamChunk,
                     variables: {
                         chunkText: streamErrorMessage,
-                        index: chunkIndex++,
+                        index: -3,
                         chatSessionId: event.arguments.chatSessionId
                     }
                 });
+            
+            console.log("Publish error message in stream response: ", publishChunkResponse)
             
             // Re-throw to be caught by main catch block
             throw streamError;
@@ -392,7 +394,7 @@ When using the textToTableTool:
             query: publishResponseStreamChunk,
             variables: {
                 chunkText: errorMessage,
-                index: 0,
+                index: -10,
                 chatSessionId: event.arguments.chatSessionId
             }
         })
