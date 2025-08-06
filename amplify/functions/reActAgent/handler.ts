@@ -379,8 +379,14 @@ When using the textToTableTool:
 
         console.warn("Error responding to user:", JSON.stringify(error, null, 2));
 
-        // Send the complete error message to the client
-        const errorMessage = error instanceof Error ? error.stack || error.message : String(error);
+        let errorMessage = "Error responding to user.\n"
+
+        if (error instanceof Error) {
+                console.error("Stream error details:", JSON.stringify(error, null, 2));
+                errorMessage += error.stack || error.message
+            }
+        // // Send the complete error message to the client
+        // const errorMessage = error instanceof Error ? error.stack || error.message : String(error);
 
         const publishChunkResponse = await amplifyClient.graphql({
             query: publishResponseStreamChunk,
