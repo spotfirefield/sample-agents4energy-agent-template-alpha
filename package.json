@@ -69,7 +69,6 @@
     "cheerio": "^1.0.0",
     "constructs": "^10.4.2",
     "dotenv": "^16.4.7",
-    "esbuild": "^0.25.1",
     "eslint": "^8.56.0",
     "eslint-config-next": "^14.2.26",
     "esm-hook": "^0.1.4",
