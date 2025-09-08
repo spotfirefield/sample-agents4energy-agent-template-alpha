@@ -21,16 +21,20 @@ import { createProjectTool } from "../tools/createProjectTool";
 // import { permeabilityCalculator } from "../tools/customWorkshopTool";
 
 import { Schema } from '../../data/resource';
-
 import { getLangChainChatMessagesStartingWithHumanMessage, getLangChainMessageTextContent, publishMessage, stringifyLimitStringLength } from '../../../utils/langChainUtils';
+import { listMcpServers } from '../../../utils/graphqlStatements'
 import { EventEmitter } from "events";
 
-import { startMcpBridgeServer } from "./awsSignedMcpBridge"
+import { startMcpBridgeServer } from "../../../utils/awsSignedMcpBridge"
 
 const USE_MCP = true;
-const LOCAL_PROXY_PORT = 3020
+// const LOCAL_PROXY_PORT = 3020
 
-let mcpTools: StructuredToolInterface<ToolSchemaBase, any, any>[] = []
+let proxyServerInitilized = false
+let proxyServerPort: number | null
+// let mcpTools: StructuredToolInterface<ToolSchemaBase, any, any>[] = []
+// Each chat session will have a unique set of MCP tools because the chat-session-id header value will be different.
+let mcpTools: Record<string,StructuredToolInterface<ToolSchemaBase, any, any>[]> = {}
 
 // Increase the default max listeners to prevent warnings
 EventEmitter.defaultMaxListeners = 10;
@@ -71,17 +75,27 @@ export const handler: Schema["invokeReActAgent"]["functionHandler"] = async (eve
         // by ensuring no message content is empty when sent to Bedrock
         const chatSessionMessages = await getLangChainChatMessagesStartingWithHumanMessage(event.arguments.chatSessionId)
 
-        if (chatSessionMessages.length === 0) {
-            console.warn('No messages found in chat session')
-            return
-        }
+        
 
         const agentModel = new ChatBedrockConverse({
             model: process.env.AGENT_MODEL_ID,
             // temperature: 0
         });
 
-        if (mcpTools.length === 0 && USE_MCP) {
+        if (! proxyServerInitilized ){
+            // Start the MCP bridge server with default options
+            const mcpBridgeServer = await startMcpBridgeServer({
+                // port: LOCAL_PROXY_PORT,
+                service: 'lambda'
+            })
+            // Get the port after the server is listening
+            const address = mcpBridgeServer.address()
+            proxyServerPort = typeof address === 'object' && address !== null ? address.port : null
+            console.log('Server is listening on port:', proxyServerPort)
+        }
+
+        if (!(event.arguments.chatSessionId in mcpTools) && USE_MCP) {
+            proxyServerInitilized = true
             await amplifyClient.graphql({
                 query: publishResponseStreamChunk,
                 variables: {
@@ -91,31 +105,60 @@ export const handler: Schema["invokeReActAgent"]["functionHandler"] = async (eve
                 }
             })
 
-            // Start the MCP bridge server with default options
-            startMcpBridgeServer({
-                port: LOCAL_PROXY_PORT,
-                service: 'lambda'
+            //Get the configured mcp servers from the MCP registry
+            const {data: {listMcpServers: {items: mcpServers} } } = await amplifyClient.graphql({
+                query: listMcpServers
             })
 
-            const mcpClient = new MultiServerMCPClient({
-                useStandardContentBlocks: true,
-                prefixToolNameWithServerName: false,
-                // additionalToolNamePrefix: "",
+            console.log({ mcpServers })
 
-                mcpServers: {
-                    a4e: {
-                        url: `http://localhost:${LOCAL_PROXY_PORT}/proxy`,
+            // Build the mcpServers configuration dynamically from enabled servers
+            const mcpServersConfig: Record<string, any> = {}
+            
+            mcpServers
+                .filter(server => server.enabled && server.name && server.url) // Only include enabled servers with valid name and url
+                .forEach(server => {
+                    // Build base headers
+                    const baseHeaders = {
+                        'target-url': server.url,
+                        'accept': 'application/json',
+                        'jsonrpc': '2.0',
+                        'chat-session-id': event.arguments.chatSessionId
+                    }
+
+                    // Add server-specific headers if they exist
+                    const serverHeaders: Record<string, string> = {}
+                    if (server.headers && Array.isArray(server.headers)) {
+                        server.headers.forEach(header => {
+                            if (header && header.key && header.value) {
+                                serverHeaders[header.key] = header.value
+                            }
+                        })
+                    }
+
+                    mcpServersConfig[server.name!] = {
+                        url: `http://localhost:${proxyServerPort}/proxy`,
                         headers: {
-                            'target-url': process.env.MCP_FUNCTION_URL!,
-                            'accept': 'application/json',
-                            'jsonrpc': '2.0',
-                            'chat-session-id': event.arguments.chatSessionId
+                            ...baseHeaders,
+                            ...serverHeaders
                         }
                     }
-                }
-            })
+                })
 
-            mcpTools = await mcpClient.getTools()
+            // Only initialize MCP client and get tools if there are enabled servers
+            if (Object.keys(mcpServersConfig).length > 0) {
+                const mcpClient = new MultiServerMCPClient({
+                    useStandardContentBlocks: true,
+                    prefixToolNameWithServerName: false,
+                    // additionalToolNamePrefix: "",
+
+                    mcpServers: mcpServersConfig
+                })
+
+                mcpTools[event.arguments.chatSessionId] = await mcpClient.getTools()
+            } else {
+                console.log('No enabled MCP servers found, skipping MCP client initialization')
+            }
 
             await amplifyClient.graphql({
                 query: publishResponseStreamChunk,
@@ -127,9 +170,9 @@ export const handler: Schema["invokeReActAgent"]["functionHandler"] = async (eve
             })
         }
 
-        console.log('Mcp Tools: ', mcpTools)
+        console.log('Mcp Tools: ', mcpTools[event.arguments.chatSessionId])
 
-        const agentTools = USE_MCP ? mcpTools : [
+        const agentTools = USE_MCP ? mcpTools[event.arguments.chatSessionId] : [
             new Calculator(),
             ...s3FileManagementTools,
             userInputTool,
@@ -162,6 +205,13 @@ pio.templates.default = "white_clean_log"
             }),
             renderAssetTool
         ]
+
+
+        // The initial invocation can generate the MCP server connection information and tools. Then, if there are no messages, return no response. That way the subsequent invocation which the user sends with a chat message won't have to wait for the mcp tools to load. 
+        if (chatSessionMessages.length === 0) {
+            console.warn('No messages found in chat session')
+            return
+        }
 
         const agent = createReactAgent({
             llm: agentModel,
