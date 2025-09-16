@@ -263,7 +263,7 @@ export async function readS3Object(props: { key: string, maxBytes: number, start
                 totalBytes: contentLength,
                 bytesRead: content.length,
                 truncationMessage: wasTruncated ?
-                    `\n[...File truncated. Showing bytes ${startAtByte} to ${startAtByte + content.length} of ${contentLength} total bytes...]` :
+                    `\n[...File truncated. Showing bytes ${startAtByte} to ${startAtByte + content.length} of ${contentLength} total bytes...]\n Continue calling this tool to read more of the file.` :
                     undefined
             };
         } else {
@@ -402,7 +402,7 @@ export const listFiles = tool(
 // Tool to read a file from S3
 export const readFile = tool(
     async ({ filename, startAtByte = 0 }) => {
-        const maxBytes = 1024;
+        const maxBytes = 4096;
         try {
             // Normalize the path to prevent path traversal attacks
             const targetPath = path.normalize(filename);
@@ -465,12 +465,12 @@ export const updateFile = tool(
                 return JSON.stringify({ error: "Invalid file path. Cannot update files outside project root directory." });
             }
 
-            // Prevent updating files with global/ prefix
-            if (targetPath.startsWith("global/")) {
-                return JSON.stringify({ error: "Cannot update files in the global directory. Global files are read-only." });
+            // Prevent updating files with global/ prefix, except for global/notes
+            if (targetPath.startsWith("global/") && !targetPath.startsWith("global/notes/")) {
+                return JSON.stringify({ error: "Cannot update files in the global directory. Global files are read-only. Exception: global/notes/ is writable." });
             }
 
-            const prefix = getChatSessionPrefix();
+            const prefix = getS3KeyPrefix(targetPath);
             const s3Key = path.posix.join(prefix, targetPath);
 
             // Check if file exists and get content if it does
@@ -696,12 +696,12 @@ export const writeFile = tool(
                 return JSON.stringify({ error: "Invalid file path. Cannot write files outside project root directory." });
             }
 
-            // Prevent writing files with global/ prefix
-            if (targetPath.startsWith("global/")) {
-                return JSON.stringify({ error: "Cannot write files to the global directory. Global files are read-only." });
+            // Prevent writing files with global/ prefix, except for global/notes
+            if (targetPath.startsWith("global/") && !targetPath.startsWith("global/notes/")) {
+                return JSON.stringify({ error: "Cannot write files to the global directory. Global files are read-only. Exception: global/notes/ is writable." });
             }
 
-            const prefix = getChatSessionPrefix();
+            const prefix = getS3KeyPrefix(targetPath);
             const s3Key = path.posix.join(prefix, targetPath);
 
             // Create parent "directory" keys if needed
